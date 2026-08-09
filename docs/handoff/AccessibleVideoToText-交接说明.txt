@@ -1,0 +1,115 @@
+==================== 交接区块开始 ====================
+日期时间：2026-08-09 04:55（北京时间）
+当前软件版本：0.1.0-dev（尚无可运行候选版）
+Git 分支及提交：仓库初始化前，暂无分支和提交。
+
+已完成内容：
+1. 确认目标机为 Windows 10 IoT 企业版 LTSC 2021、10.0.19044、64 位。
+2. 确认系统没有 .NET SDK；系统级环境未修改。
+3. 确认本机 FFmpeg 为 N-124300-gdba0b078c8-20260502，启用 GPL，只能用于开发验证。
+4. 创建 D:\AccessibleVideoToMp3 固定目录结构。
+5. 写入 AGENTS.md、完整最终开发计划、架构/安全基线、开源复用评估、无障碍验收清单和第三方边界。
+6. 复核 .NET 目标系统支持、腾讯云普通录音文件识别免费额度、CreateRecTask 限制和 COS 生命周期官方文档。
+
+正在处理内容：
+1. 安装仓库本地 .NET 10 SDK。
+2. 建立 WinForms、Core、Infrastructure 和测试项目。
+
+未完成内容和下一步准确操作：
+1. 下载官方 dotnet-install.ps1 到 tools 并把 10.0 x64 SDK 安装到 tools\dotnet。
+2. 固定 SDK 版本和 NuGet 依赖，创建解决方案并执行 restore/build/test。
+3. 初始化 Git，执行秘密扫描，建立首个稳定提交。
+4. 然后实现标准控件主界面和 Ctrl+V 队列基线。
+
+最近构建目录：无。
+桌面测试快捷方式目标：尚未创建；未来固定为 D:\AccessibleVideoToMp3\artifacts\portable\current\AccessibleVideoToText.App.exe。
+
+已执行测试：
+通过：操作系统版本、Git 可用性、D 盘可写、FFmpeg/FFprobe 可执行文件发现。
+失败：无。
+待测试：全部应用功能和争渡无障碍项目。
+
+已知缺陷和复现步骤：
+1. 当前尚无可执行程序，无法进行功能或无障碍测试。
+
+依赖版本和许可证状态：
+1. FFMpegCore 5.4.0，MIT，计划采用，尚未还原。
+2. TencentCloudSDK.Asr 3.0.1442，官方 Apache-2.0，计划采用，尚未还原。
+3. Tencent.QCloud.Cos.Sdk 5.4.51，许可证待包内复核，计划采用，尚未还原。
+4. 本机 FFmpeg GPL nightly 禁止分发；LGPL 发行构建尚未选定。
+
+腾讯云接口参数（不含任何秘密）：
+CreateRecTask、DescribeTaskStatus；API 2019-06-14；asr.tencentcloudapi.com；16k_zh；ChannelNum=1；SourceType=0；ResTextFormat=2；ConvertNumMode=1；FilterDirty=0；FilterPunc=0；FilterModal=1；ap-shanghai。没有记录 SecretId、SecretKey、签名 URL 或识别正文。
+
+新会话接续说明：
+请先完整阅读 D:\AccessibleVideoToMp3\AGENTS.md、docs\requirements\最终开发计划.txt 和本文件最后一个交接区块。继续安装项目本地 .NET 10 x64 SDK，创建四层解决方案并固定依赖；不要修改系统级 SDK，不要使用或记录任何历史腾讯云密钥，不要把本机 GPL FFmpeg 放入发布目录。完成 restore/build/test 和秘密扫描后建立本地 Git 里程碑提交，再实现标准 WinForms 主界面与 Ctrl+V 队列。
+==================== 交接区块结束 ====================
+
+==================== 交接区块开始 ====================
+日期时间：2026-08-09 06:02（北京时间）
+当前软件版本：0.1.0 测试候选版（不得称第一版完成）
+Git 分支及提交：main；31f71d720efd22db5825d81b2ddb4968418b6b0d（feat: build accessible media and cloud test candidate）
+
+已完成内容：
+1. 在 D:\AccessibleVideoToMp3 建成 Core、Infrastructure、原生 WinForms App 和 MSTest 四项目解决方案；项目本地 .NET SDK 为 10.0.302，未修改系统级 SDK。
+2. 主窗口使用标准菜单、ListView、标签、ProgressBar、按钮、只读 TextBox 和标准对话框；实现 Ctrl+V、Ctrl+O、Delete、Alt+S、Alt+O、F1、Esc、焦点返回、完成后失败项优先、托盘和任务期防自动睡眠。
+3. 实现剪贴板顺序、规范路径去重、100 项整批限制、无效项跳过、批次期间拒绝新粘贴和上一批完成后清队列。
+4. 实现 FFprobe 探测、第一音轨、FFmpeg 隐藏进程、128/192/256/320 kbps CBR、文字元数据、无封面流、`.part.mp3`、原子提交、不覆盖和成对编号。
+5. 实现 DPAPI CurrentUser 凭据、设置、待恢复任务、本机北京时间月度用量、UTF-8 BOM/CRLF TXT、纯正文清理、空识别失败、2/5/15 秒临时错误重试。
+6. 实现腾讯云官方 ASR SDK 和 COS SDK 封装：上海区域、私有专用桶、随机 GUID 对象、专用前缀、1 天过期和未完成分块清理、签名 URL 不持久化、成功/最终失败删除和删除失败恢复记录。
+7. ASR 请求锁定普通录音文件识别：CreateRecTask/DescribeTaskStatus、API 2019-06-14、16k_zh、SourceType=0、ResTextFormat=2、数字转换和过滤参数固定，未启用大模型、说话人分离、情绪、语义分段或口语转书面语。
+8. 生成 self-contained win-x64 测试候选版并更新固定 current 目录和桌面快捷方式。候选包不含 FFmpeg/FFprobe/FFplay。
+9. 使用 D:\02.mp4 完成真实桌面本地转换：从快捷方式启动，Clipboard FileDrop、Ctrl+V、Enter，生成 D:\02.mp3；输出为单一 MP3 流、44.1 kHz、立体声、192 kbps、约 249.407 秒，无 `.part.mp3`，源文件大小和修改时间未变。
+10. UIA 检查发现主窗口、文件队列（Table）、状态、进度、标准按钮和结果编辑框；转换完成后焦点在队列项目 02.mp4。首轮候选版完成后 Alt+F4 退出且无托盘残留；更新后的 current 候选版从同一快捷方式启动并响应标准关闭消息。
+
+正在处理内容：
+1. 当前没有后台开发或云任务；程序进程已退出。
+2. 等待用户在软件本地输入新腾讯云凭据，并用争渡/纯键盘执行真实云端和无障碍测试。
+
+未完成内容和下一步准确操作：
+1. 先在腾讯云控制台撤销聊天中曾暴露的旧 SecretId/SecretKey，创建最小权限 CAM 子账号；绝不把新值发到聊天。
+2. 从桌面“无障碍视频转文字（测试版）”启动，按 Alt+S，选择“配置腾讯云凭据”，只在软件的密码输入框填写 AppID、新 SecretId、新 SecretKey，阅读费用说明并保存。保存配置本身不会上传测试音频。
+3. 在资源管理器复制 D:\02.mp4，回到软件按 Ctrl+V，选择“转换 MP3 并用腾讯云生成 TXT”；核对本批估算和默认取消的费用确认后，明确继续一次。
+4. 观察 COS 创建、上传、CreateRecTask、每 5 秒查询、TXT 写入和对象删除；不得在日志或聊天粘贴签名 URL、密钥或识别正文。检查输出预计使用 02 (1).mp3/02 (1).txt 等不覆盖编号。
+5. 用争渡和纯键盘核验标题、队列、设置、确认、进度、无百分比的云等待、取消范围、完成焦点、Alt+F4/托盘/Win+B；把准确朗读和焦点问题记录到本文件新交接区块。
+6. 后续代码补齐“只重试 TXT”、用户明确结束待恢复状态、结果目录实际选择/打开；补做不可写目录、UNC、磁盘不足、真实异常退出恢复、高对比度和 125%/150% 缩放测试。
+7. 公开发行前选择固定 LGPL FFmpeg x64 构建，补齐完整 Apache-2.0 文本和全部传递依赖许可证，再做 Windows 10 19044 实机回归；当前 GPL nightly 绝不能放入发行包。
+
+最近构建目录：
+1. 版本化候选：D:\AccessibleVideoToMp3\artifacts\portable\0.1.0-test-candidate.2
+2. 固定测试目录：D:\AccessibleVideoToMp3\artifacts\portable\current
+3. current 主程序 SHA-256：9549CE2E6FE648A24EA1BCF4B33E4EA7A2FBF44E29A3BE7A56A026332F62E1E9
+
+桌面测试快捷方式目标：
+C:\Users\apple007\Desktop\无障碍视频转文字（测试版）.lnk
+目标：D:\AccessibleVideoToMp3\artifacts\portable\current\AccessibleVideoToText.App.exe
+工作目录：D:\AccessibleVideoToMp3\artifacts\portable\current
+
+已执行的测试及通过、失败项：
+通过：Release 自动测试 38/38，0 失败、0 跳过；Release 构建 0 警告、0 错误；秘密扫描无疑似真实凭据/签名 URL；D:\02.mp4 真实本地转换；192 kbps 输出探测；无 `.part`；快捷方式启动；UIA 标准控件和完成焦点；空闲标准关闭消息；首轮 Alt+F4 无托盘残留。
+通过（模拟云服务）：现有 MP3 不修改；成功写 TXT 后删除 COS 对象；识别失败不生成 TXT并删除对象；提交后取消保留恢复任务和云对象；ASR 固定参数快照；COS 专用前缀/1 天生命周期策略；北京时间跨月归零。
+失败：无已执行测试失败。
+待测试：真实 COS 上传、真实 CreateRecTask/DescribeTaskStatus、腾讯云权限/认证/收费保护、真实 TXT 内容、云端对象即时删除；争渡全流程；纯键盘所有窗口；Win+B 托盘恢复；高对比度；125%/150%；UNC/移动介质/不可写目录/磁盘不足；24 小时真实过期。
+
+已知缺陷和复现步骤：
+1. 真实腾讯云流程未执行。原因：当前电脑没有软件通过 DPAPI 保存的新凭据；旧凭据已暴露并被规则禁止使用。按“未完成内容”第 1 至 4 步复现并测试。
+2. “只重试 TXT”尚无独立队列命令；云端恢复能继续已保存任务，但不能从普通失败项直接选择只重试 TXT。
+3. 设置中的结果目录按钮当前只说明默认位置，没有完整的选择/打开实现。
+4. 存在待恢复任务时软件会禁止清除和更换凭据，但尚无“明确结束恢复状态”的独立管理操作。
+5. 争渡真实朗读和完整焦点行为尚未由用户验收；自动 UIA 通过不能替代争渡验收。
+6. 当前测试机依赖 PATH 中 GPL FFmpeg nightly；若在没有 FFmpeg 的电脑运行，媒体探测/转换会失败。测试候选包不含该二进制，公开发行仍被 LGPL 构建选择阻断。
+7. `third-party\licenses\TencentCloudSDK-Apache-2.0.txt` 当前是测试候选版许可提示而非完整逐字许可证；公开发行前必须替换为完整官方 Apache-2.0 文本。
+
+依赖版本和许可证状态：
+1. .NET SDK 10.0.302，项目本地安装；应用 self-contained win-x64。
+2. FFMpegCore 5.4.0，MIT，采用；许可证文本已放入 third-party。
+3. TencentCloudSDK.Asr 3.0.1442，腾讯官方 SDK，Apache-2.0，采用；完整许可证文本公开发行前补齐。
+4. Tencent.QCloud.Cos.Sdk 5.4.51，腾讯云官方快速入门直接链接的 .NET 源码仓库声明 MIT，采用；NuGet 包自身缺少 license/repository 元数据，公开发行前再次核对包版本与源码标签对应关系。
+5. 本机 FFmpeg N-124300-gdba0b078c8-20260502 启用 GPL/version3，仅开发验证；候选包未携带。固定 LGPL 发行构建待选。
+
+腾讯云接口参数（绝不含秘密）：
+CreateRecTask、DescribeTaskStatus；API 版本 2019-06-14；域名 asr.tencentcloudapi.com；EngineModelType=16k_zh；ChannelNum=1；SourceType=0；ResTextFormat=2；ConvertNumMode=1；FilterDirty=0；FilterPunc=0；FilterModal=1；SpeakerDiarization=0；EmotionRecognition=0；EmotionalEnergy=0；区域 ap-shanghai；COS 专用前缀 accessible-video-to-text/；生命周期 1 天。没有记录 SecretId、SecretKey、签名 URL 或识别正文。
+
+新会话可直接复制使用的接续说明：
+请先完整阅读 D:\AccessibleVideoToMp3\AGENTS.md、docs\requirements\最终开发计划.txt 和 交接说明.txt 最后一个区块。当前稳定代码提交是 main/31f71d720efd22db5825d81b2ddb4968418b6b0d；桌面测试版固定指向 artifacts\portable\current，D:\02.mp3 已由 D:\02.mp4 真实本地转换成功。下一步不要再重做项目骨架或本地转换：先让用户只在软件本地配置已经重新创建的新腾讯云凭据，再用 D:\02.mp4 做一次“转换 MP3 并生成 TXT”真实云测试和争渡纯键盘验收。绝不要求用户把密钥、签名 URL 或识别正文发到聊天。真实云端未通过前只能称测试候选版。测试后记录 COS/ASR 成功或具体错误、焦点和朗读问题，并追加交接区块；随后优先修复真实缺陷，再补“只重试 TXT”、结束恢复状态和结果目录操作。不要把本机 GPL FFmpeg 复制进任何包，不制作服务器更新包。
+==================== 交接区块结束 ====================

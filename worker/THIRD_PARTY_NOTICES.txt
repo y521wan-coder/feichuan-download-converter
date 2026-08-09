@@ -1,0 +1,77 @@
+飞船下载工具第三方组件声明
+版本：0.3.9
+
+本文件记录随 0.3.9 Windows 安装版分发的主要第三方组件。对应许可证全文位于
+安装目录的 licenses 文件夹。项目自身的发布名称、产品密钥和更新通道不改变任何
+第三方组件的许可证。
+
+1. yt-dlp
+   项目：https://github.com/yt-dlp/yt-dlp
+   固定版本：2026.07.04，Windows 官方发布可执行文件
+   文件：tools\yt-dlp.exe
+   SHA-256：52FE3C26DCF71FBDC85B528589020BB0B8E383155CFA81B64DD447BBE35E24B8
+   许可证：The Unlicense
+   用途：外置通用下载核心。
+
+2. FFmpeg / ffprobe
+   上游项目：https://ffmpeg.org/ 与 https://github.com/FFmpeg/FFmpeg
+   Windows 构建来源：https://github.com/BtbN/FFmpeg-Builds
+   固定资产：ffmpeg-n8.1-latest-win64-lgpl-8.1.zip
+   下载日期：2026-07-18
+   归档 SHA-256：F410BB28236B96F082CD3C7101FCB0CD0FE06330EF90FBC29B0E4B15A0F1099D
+   FFmpeg 版本：n8.1.2-22-g94138f6973-20260718
+   tools\ffmpeg.exe SHA-256：
+   9203AD8B3940926730575C9EE0845B5FEDCA59EC39C1D3A6161F4F6417A07C1A
+   tools\ffprobe.exe SHA-256：
+   DDEC1E96B9E894DE942CEA9A8D5799F2D82AD80AD7483BA598FDDE54D5B40C49
+   许可证边界：该 BtbN 静态构建未启用 --enable-gpl，启用了
+   --enable-version3，按 GNU LGPL version 3 分发。许可证全文随包提供：
+   licenses\FFmpeg-LGPL-3.0.txt 与 licenses\GNU-GPL-3.0.txt。
+   用途：媒体合并、转封装与下载完成后的 ffprobe 校验。
+
+3. wxPython
+   项目：https://wxpython.org/
+   固定版本：4.2.5（wxWidgets 3.2.9）
+   许可证：wxWindows Library Licence
+   用途：原生 Windows 图形界面，由 PyInstaller 打包进主程序。
+
+4. Requests
+   项目：https://requests.readthedocs.io/
+   固定版本：2.33.1
+   许可证：Apache License 2.0
+   用途：HTTP 客户端，由 PyInstaller 打包进主程序。
+
+5. websocket-client
+   项目：https://github.com/websocket-client/websocket-client
+   固定版本：1.9.0
+   许可证：Apache License 2.0
+   用途：Chrome DevTools WebSocket 客户端，由 PyInstaller 打包进主程序。
+
+6. PyInstaller
+   项目：https://pyinstaller.org/
+   固定版本：6.21.0
+   许可证：GPL-2.0-or-later，附允许分发所生成非自由程序的特殊例外。
+   用途：仅用于生成 Windows 主程序。
+
+开源参考边界
+
+- jiji262/douyin-downloader、putyy/res-downloader 仅作为
+  设计与行为参考；本版本没有复制其 EXE、证书或私钥。
+- NVDA（https://github.com/nvaccess/nvda）仅用于核对键盘焦点、控件名称和状态变化
+  的屏幕阅读器行为；未将 NVDA 代码打包进本软件。
+- 如后续实际复用新的第三方代码或二进制，必须在发布前补充固定版本、来源、许可证
+  和修改说明。
+
+发布说明
+
+- 0.3.5 支持抖音 Playlet 系列子合集的动态扫描与已确认公开作品下载；本次目标链接
+  当前 16 集仅作为真实验收值，软件不会写死合集数量。
+- 0.3.7 默认保存到系统下载文件夹，批量任务自动建立子文件夹，并支持下载前选择
+  本次品质或格式。
+- 0.3.9 通用修复抖音视频占位片段下载，浏览器抓流兜底新增 ffprobe 时长校验，自动跳过短于 5 秒的占位片段。
+- 0.3.8 通用修复抖音图文单作品下载，图文 `/note/` 链接优先保存真实背景音频，
+  不把短视频预览保存为成功结果。
+- 0.3.9 安装包与主 EXE 当前没有 Authenticode 代码签名；Windows 可能显示“未知
+  发布者”。这不等同于自签名或受信任 CA 签名，发布记录不得声称已签名。
+- 0.3.9 会发布到 stable 更新服务器；发布过程不得写入或泄露服务器凭据、Cookie、
+  token、媒体签名 URL、私钥或其它敏感信息。

@@ -1,0 +1,71 @@
+# Build outputs
+bin/
+obj/
+.vs/
+TestResults/
+*.user
+*.suo
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Project-local SDK and caches
+tools/dotnet/
+tools/.nuget/
+
+# Imported worker tool binaries are kept locally for reproducible builds but
+# are not committed to Git. Their versions and hashes are recorded in docs.
+worker/tools/*.exe
+
+# Generated artifacts and logs
+artifacts/portable/*
+!artifacts/portable/current/
+artifacts/portable/current/*
+!artifacts/portable/current/.gitkeep
+artifacts/releases/*
+!artifacts/releases/.gitkeep
+worker/build/
+worker/dist/
+worker/release/
+release/*
+!release/.gitkeep
+logs/development/*.log
+logs/development/*.binlog
+
+# Private or generated runtime data
+*.part.mp3
+*.part.txt
+*.mp3
+*.wav
+*.m4a
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.wmv
+*.flv
+*.webm
+*.mpeg
+*.mpg
+*.ts
+*.m2ts
+*.3gp
+settings.json
+credentials.dat
+jobs.json
+usage-ledger.json
+*.log
+core_update_state.json
+
+# Secrets and local overrides
+.env
+.env.*
+secrets.*
+appsettings.Local.json
+*.pfx
+*.snk
+
+# OS noise
+Thumbs.db
+Desktop.ini

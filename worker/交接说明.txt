@@ -1,0 +1,155 @@
+飞船下载工具 0.3.9 开发交接说明（2026-08-07 内核重建·第二轮修复·D盘安装包已生成）
+
+交接日期：2026-08-07
+项目目录：D:\飞船下载工具开发
+当前项目/本地发布版本：0.3.9（2026-08-07 重建内核，未发布服务器）
+产品标识：feichuan_download_tool
+更新平台：windows
+更新频道：stable
+更新服务器：https://update.327802521.xyz
+更新检查接口：https://update.327802521.xyz/api/v1/updates/check
+
+一、当前状态（2026-08-07）
+
+背景：2026-08-07 用户反馈用 0.3.9 下载抖音视频“AI时代的愤怒诱饵”（窦文涛圆桌派，链接 https://v.douyin.com/iSfXjmLshsU/ ）后没有声音，转 MP3 时提示“没有视频流”。D 盘原文件经检测为 4,327,792 字节的 mp4，只有视频轨（h264，576x768，220.76 秒，5517 帧全部可解码），没有音频轨，因此播放无声、无法提取音频转 MP3。
+
+已完成：
+1. 修复 douyin_capture.py 浏览器抓流兜底：抖音网页把视频轨与音频轨分成独立流下发，且音频流 Content-Type 常误标为 video/mp4，旧逻辑按 URL/MIME 判音频失败，只保存了纯视频轨。修复后按实际探测内容配对：纯视频轨 + 独立音频轨自动下载并用 ffmpeg 合并为音画齐全文件；本身音画齐全的候选（如 HLS）优先；占位片段跳过；视频类页面最终拿不到音画齐全文件时直接报错“未捕获到音频轨”且不保存无声文件；/note/ 图文背景音频行为保持不变。
+2. douyin_downloader.py 的 _validate_video 收紧为要求同时含 video+audio（纵深防御，直链下载出现无声文件时自动转抓流兜底重试）。
+3. 新增离线回归（tests\smoke_test.py）：m3u8 优先排序、独立音频候选选择、纯视频+独立音频合并为 A+V、纯视频无音频报错不保存、真实场景“占位 + 纯视频轨 + 独立音频轨(误标 video/mp4)”自动配对合并。
+4. 源码实抓用户链接验证：下载结果 .mp4 大小 5,786,159 字节，含 video(h264 576x768)+audio(aac)，时长 220.7 秒，ffmpeg 全帧解码无错误。
+5. PyInstaller 内核重建（版本保持 0.3.9）并替换当前用户安装内核；打包版 GUI 冒烟通过。
+
+当前用户版安装位置：
+C:\Users\apple007\AppData\Local\Programs\飞船下载工具\
+已替换内核：飞船下载工具.exe（25,996,752 字节）
+SHA-256：F319A0A746A51D5C87DBCE18D66C9944965ACF3DBD48AA11FD0A45FA4B6B6695
+版本与校验.txt 已同步更新为最新内核哈希。
+
+服务器发布状态：本次任务按用户要求不上传、不发布服务器更新；D 盘安装包已生成（见第五节）。更新服务器 stable 仍为 2026-07-29 发布的原 0.3.9（release id 18），未受本次影响。
+
+待办：第二轮修复已替换内核并生成 D 盘安装包；是否发布到更新服务器待用户决定（如发布再走服务器发布流程，沿用下方协议）。
+
+二、本次（2026-08-07）关键改动
+
+1. douyin_capture.py（主修复）
+   - 候选排序改为优先 m3u8/HLS（已合并音画），其次视频流，再按内容长度（原 reverse=True 会把 m3u8 排到最后，属排序缺陷）。
+   - 下载每个候选后用 ffprobe 按实际内容分类：音画齐全→直接保存；纯视频轨→暂存等待独立音频轨；纯音频轨→暂存等待视频轨；两者齐备即 ffmpeg 合并（-f mp4，先 -c:v copy -c:a copy，失败回退 -c:v copy -c:a aac -b:a 128k -shortest -movflags +faststart），并复验合并结果同时含 video+audio。
+   - 每个候选使用独立临时文件名（<文件名>.candN.part），避免视频轨与音频轨下载路径冲突。
+   - 视频类页面遍历完仍无音画齐全文件时报错“候选视频缺少音频轨，且未捕获到独立音频流。/ 已获取视频轨与音频轨，但音视频合并失败。”且不保存。
+   - /note/ 图文页仍只取背景音频直接保存，行为不变。
+
+2. douyin_downloader.py
+   - _validate_video 在原有“必须有视频轨”基础上新增“必须同时有音频轨”，不满足即报错并转兜底。
+
+3. tests\smoke_test.py
+   - 新增离线回归：_sort_candidates 排序、_find_audio_candidate 选择、_merge_audio_video 真实合并、纯视频无音频报错不保存、真实场景自动配对合并（用 tools\ffmpeg.exe 的 libopenh264/aac 生成夹具）。
+
+4. gui.py（第二轮 2026-08-07）
+   - 关闭启动自动更新检查：移除 _startup_core_check（yt-dlp 核心）与 _startup_software_update_check（软件）的启动调用，改为纯手动检查（“检查软件更新”“检查下载核心更新”按钮）；方法保留（gui_update_prompt_smoke 测试引用）。
+   - 启动日志改为提示“软件与下载核心更新均为手动检查，打开软件不会自动检查更新”。
+
+5. coordinator.py（第二轮 2026-08-07）
+   - 任务子文件夹不再在扫描/预览阶段提前创建（_task_download_dir 去掉提前 mkdir），避免“普通网站列表 N”“抖音主页”等空文件夹。
+   - 批量/列表下载结束（download_generic / download_prepared）后自动清理仍为空的子文件夹（_prune_empty_dir：仅删空目录，非空目录一律保留）。
+   - 新增回归：仅预览不创建子文件夹、空目录清理、FakeDownloader 镜像真实后端先建目录。
+
+三、关键源码和测试文件
+
+1. src\feichuan_downloader\douyin_capture.py
+   - 新增/保留：_is_placeholder_video、_sort_candidates、_find_audio_candidate、_probe_stream_types、_merge_audio_video、_merge_completed、_cleanup_partials、_safe_unlink。
+   - _download_candidates 重写为按实际探测内容进行“视频轨+音频轨”配对合并。
+
+2. src\feichuan_downloader\douyin_downloader.py
+   - _validate_video 要求 video+audio。
+
+3. tests\smoke_test.py
+   - 新增音画完整性相关离线回归（见上）。
+
+4. src\feichuan_downloader\coordinator.py
+   - _task_download_dir 惰性建目录、新增 _prune_empty_dir 空目录清理、download_generic/download_prepared 收尾清理空任务目录。
+
+5. src\feichuan_downloader\gui.py
+   - 启动不再自动检查软件/核心更新；日志提示改为手动检查。
+
+四、测试和验证结果（2026-08-07）
+
+1. Python 编译：已通过（python -m compileall -q src tests；逐文件 py_compile 通过）。
+2. 完整离线 smoke：已通过（python scripts\run_smoke.py → Offline smoke passed: 17 tests）。
+3. 源码 GUI/UIA 冒烟：已通过（python tests\gui_source_smoke.py → source gui smoke passed）。
+4. 源码实抓用户链接：已通过（浏览器抓流兜底，3 个候选，占位拦截后视频轨+独立音频轨自动合并；结果 5,786,159 字节，video+audio，时长 220.7s，全帧解码无错误）。
+5. PyInstaller 绿色版构建：已通过（dist\飞船下载工具.exe）。
+6. 打包版 GUI 冒烟：已通过（python tests\gui_smoke.py → gui smoke passed）。
+7. 内核替换：已替换当前用户版内核，哈希与 dist 一致。
+8. GUI 端到端验收：由用户自行测试中（待确认）。
+
+五、安装包产物
+
+1. 重建的主程序内核（版本 0.3.9）：
+D:\飞船下载工具开发\dist\飞船下载工具.exe（25,996,752 字节）
+SHA-256：F319A0A746A51D5C87DBCE18D66C9944965ACF3DBD48AA11FD0A45FA4B6B6695
+D:\飞船下载工具开发\dist\版本与校验.txt（已更新）
+
+2. Inno Setup 安装包（2026-08-07 第二轮后生成，覆盖原 2026-07-29 安装包，内含本轮修复内核）：
+项目 release 安装包：
+D:\飞船下载工具开发\release\飞船下载工具-Setup-0.3.9.exe
+D 盘根目录分发副本：
+D:\飞船下载工具-Setup-0.3.9.exe
+（D 盘根目录按规则不保留 .sha256；审计用 .sha256 保留在 release 目录）
+安装包大小：115,931,266 字节
+安装包 SHA-256：1E1202E494E2587390D84FB791885C2D961AB5940FAADEF4C5685F3EF7CB34D1
+
+六、服务器发布状态
+
+更新服务器：https://update.327802521.xyz
+Django Admin：https://update.327802521.xyz/admin/
+服务器项目路径：/opt/update-server
+SSH：ssh -i C:\apple1007 root@154.23.163.68
+
+历史发布（2026-07-29，原 0.3.9，非本次内核）：
+1. 0.3.9 stable 已发布，release id 为 18。
+2. Product.product_key=feichuan_download_tool，Release 的 platform=windows、channel=stable、version=0.3.9、status=published。
+3. 服务器正式包路径：
+   feichuan_download_tool/windows/stable/0.3.9/4da3375211964e68a686e446b6e3cc9e.exe
+4. current_version=0.3.8 能看到 0.3.9；current_version=0.3.9 显示无更新。
+
+本次（2026-08-07）未上传、未发布任何新版本到服务器。
+
+七、D:\ 根目录 .sha256 文件规则
+
+当前规则保持不变：
+1. D:\ 根目录只保留便于分发的安装包 EXE。
+2. D:\ 根目录不保留安装包 .sha256 副本。
+3. 发布审计用 .sha256 仍保留在 D:\飞船下载工具开发\release\。
+4. 后续如需把最新安装包复制到 D:\ 根目录，使用：
+   powershell -ExecutionPolicy Bypass -File D:\飞船下载工具开发\scripts\copy_installer_to_d_root.ps1
+5. 不要手动再把 release 目录的 .sha256 复制到 D:\ 根目录。
+
+八、后续注意事项
+
+1. 每次开发任务收尾时，必须自动更新：
+   - D:\飞船下载工具开发\交接说明.txt
+   - D:\飞船下载工具开发\开发日志.txt
+
+2. 不要删除或修改 installer\飞船.iss 中的固定 AppId，否则未来覆盖升级会失去原安装身份：
+   {1E97F30E-8634-4032-A5A2-715394D9A471}
+
+3. 不要把 Cookie、token、媒体签名 URL、授权头、私钥、服务器密码、Django Admin 密码或其它凭据写入源码、文档、日志、SQLite、交接说明或安装包。
+
+4. 客户端更新协议必须继续继承：
+   - product_key=feichuan_download_tool
+   - platform=windows
+   - channel=stable
+   - current_version=当前客户端版本
+   - 只读取接口返回的 data.download_url，不自行拼接下载地址。
+   - 下载更新安装包后必须校验 SHA-256。
+   - 启动安装包前再次校验 SHA-256。
+   - 校验失败不得执行安装包。
+
+5. 主程序和安装包仍为未签名构建，Windows 可能显示“未知发布者”。不要在发布说明中声称已 Authenticode 签名。
+
+6. 底层开发规则：新增代码或工具组件前，先到 github.com 检索成熟开源方案，合适则优先复用。这条以后都要记住。
+
+九、最终结论
+
+飞船下载工具 0.3.9（2026-08-07 内核重建·第二轮修复·D盘安装包已生成）已修复“抖音抓流兜底下载无声视频”（按实际内容自动配对合并独立音频轨，产出音画齐全文件），并完成第二轮修复：打开软件不再自动检查任何更新（软件与 yt-dlp 核心更新均改为手动检查）；批量/列表下载不再提前创建空的任务子文件夹，结束后自动清理空目录。离线回归 17 项、源码 GUI/UIA 冒烟、打包版 GUI 冒烟均通过；源码实抓用户链接验证结果为 video+audio、时长 220.7s、全帧解码无错误；已替换当前用户版内核（25,996,752 字节，SHA-256 F319A0A746A51D5C87DBCE18D66C9944965ACF3DBD48AA11FD0A45FA4B6B6695，哈希与 dist 一致）。已生成 D 盘安装包（115,931,266 字节，SHA-256 1E1202E494E2587390D84FB791885C2D961AB5940FAADEF4C5685F3EF7CB34D1，内含本轮修复内核）。未上传/发布服务器更新（更新服务器 stable 仍为 2026-07-29 的原 0.3.9，release id 18）。是否发布到服务器由用户决定。

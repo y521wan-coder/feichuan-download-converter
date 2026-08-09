@@ -1,0 +1,149 @@
+2026-08-07（第二轮）
+
+- 用户实测第一轮内核后反馈两项新问题（焦点问题经用户确认已恢复正常，未改动）：
+  1. 打开软件会自动检查更新（软件更新 + yt-dlp 核心更新），希望改为纯手动检查。
+  2. 批量/列表下载会在下载文件夹留下“普通网站列表 N”“抖音主页”等空文件夹，里面没有内容。
+- 修复 gui.py：移除 _startup_core_check 与 _startup_software_update_check 的启动调用，软件与下载核心更新均改为手动检查（保留方法，gui_update_prompt_smoke 测试引用）；启动日志改为“软件与下载核心更新均为手动检查”。
+- 修复 coordinator.py：
+  - _task_download_dir 去掉提前 mkdir，扫描/预览阶段不再创建任务子文件夹（解决“仅预览就留空文件夹”）。
+  - 新增 _prune_empty_dir（仅删空目录），download_generic 与 download_prepared 收尾时清理仍为空的任务子文件夹；真实下载由各后端写入文件时自动建目录。
+- 新增回归（tests\coordinator_batch_smoke.py）：FakeDownloader 镜像真实后端先建目录、仅预览不创建子文件夹、空目录清理。
+- Python 编译通过；完整离线 smoke 17 项通过；源码 GUI/UIA 冒烟通过；打包版 GUI 冒烟通过。
+- 内核重建：dist\飞船下载工具.exe（25,996,752 字节，SHA-256 F319A0A746A51D5C87DBCE18D66C9944965ACF3DBD48AA11FD0A45FA4B6B6695），版本保持 0.3.9。
+- 已替换当前用户版内核：C:\Users\apple007\AppData\Local\Programs\飞船下载工具\飞船下载工具.exe，版本与校验.txt 已同步。
+- 未生成 D 盘安装包、未生成 Inno 安装包、未上传/发布服务器（按用户要求）。
+- 待办：用户测试确认第二轮修复（不再自动检查更新、批量无空文件夹）。
+
+2026-08-07
+
+- 用户反馈抖音视频（窦文涛圆桌派“AI时代的愤怒诱饵”，链接 https://v.douyin.com/iSfXjmLshsU/ ）下载后无声、转 MP3 提示“没有视频流”。
+- D 盘原文件诊断：4,327,792 字节 mp4，仅 h264 视频轨（576x768，220.76 秒，5517 帧全部可解码），无音频轨；文件本身完好。
+- 根因：浏览器抓流兜底（douyin_capture.py）只下载单个媒体候选；抖音网页把视频轨与音频轨分为独立流下发，且音频流 Content-Type 误标为 video/mp4，旧逻辑按 URL/MIME 判音频失败，选中纯视频轨即保存。
+- 修复 douyin_capture.py：
+  - 候选排序优先 m3u8/HLS（音画合并流）。
+  - 按实际探测内容配对：纯视频轨 + 独立音频轨自动下载并 ffmpeg 合并（-f mp4；先 -c:v copy -c:a copy，失败回退音频转 aac）。
+  - 视频类页面最终无音画齐全文件时报错“未捕获到音频轨”且不保存无声文件；/note/ 图文背景音频行为不变。
+  - 每个候选使用独立临时文件名（.candN.part），避免音视频轨下载路径冲突。
+- douyin_downloader.py：_validate_video 收紧为要求同时含 video+audio（纵深防御）。
+- 新增离线回归（tests\smoke_test.py）：排序、音频候选选择、合并为 A+V、纯视频无音频报错不保存、真实场景“占位+纯视频+独立音频(误标 video/mp4)”自动配对合并。
+- 修复过程中发现并修正的 bug：_collect_media 静态方法内误用 self._sort_candidates；_merge_completed 临时文件扩展名 .part 导致 ffmpeg 无法推断容器（改 -f mp4 且临时文件用 .merged.mp4）；候选临时路径冲突（改 .candN.part）。
+- Python 编译通过；完整离线 smoke 17 项通过；源码 GUI/UIA 冒烟通过。
+- 源码实抓用户链接验证：5,786,159 字节，video(h264 576x768)+audio(aac)，时长 220.7 秒，ffmpeg 全帧解码无错误。
+- PyInstaller 内核重建通过：dist\飞船下载工具.exe（25,997,734 字节，SHA-256 66A34EA62A73FB7FE8B686F778EF7DB170B1D7FAFFA10CF876E0D766C82B1344）。
+- 打包版 GUI 冒烟通过（python tests\gui_smoke.py）。
+- 当前用户版内核已替换：C:\Users\apple007\AppData\Local\Programs\飞船下载工具\飞船下载工具.exe（版本保持 0.3.9），版本与校验.txt 已同步。
+- 未生成 D 盘安装包、未生成 Inno 安装包、未上传/发布服务器（按用户要求；服务器 stable 仍为 2026-07-29 的原 0.3.9，release id 18）。
+- 待办：用户用已安装软件做 GUI 端到端验收（下载该视频应音画齐全、可转 MP3）；验收通过后如需正式发布再生成安装包并走服务器发布流程。
+
+飞船下载工具开发日志
+
+固定收尾规则
+
+- 后续每次开发任务结束后，必须自动更新以下两个文件，不要等待用户提醒：
+  1. D:\飞船下载工具开发\交接说明.txt
+  2. D:\飞船下载工具开发\开发日志.txt
+- 更新内容至少包含：版本号、关键改动、测试结果、构建产物、安装状态、服务器发布状态、后续注意事项。
+- 这样即使开发过程突然中断，也能从交接说明和开发日志接上当前进度。
+
+2026-07-29
+
+- 完成 0.3.9 本地开发、构建和当前用户覆盖安装。
+- 通用修复抖音 /video/ 页面下载到 2 秒占位 MP4 的问题；浏览器抓流兜底新增 ffprobe 时长校验，自动跳过短于 5 秒的占位片段并尝试下一个候选。
+- 新增 _is_placeholder_video 静态方法，使用 ffprobe 检测候选视频时长。
+- 已有候选遍历逻辑（最多 8 个候选）确保跳过占位片段后能继续尝试真实 VOD。
+- 新增离线回归：mock ffprobe 输出 2.0 秒时 _is_placeholder_video 返回 True，mock 120.0 秒时返回 False。
+- Python 编译通过。
+- 完整离线 smoke 17 项通过。
+- 源码 GUI/UIA 冒烟通过。
+- 用户提供的真实抖音视频链接源码验证通过：下载结果为 .mp4，大小 4,528,128 字节，ffprobe 输出 duration=144.166667、width=576、height=1024。不再是 2 秒占位视频。
+- PyInstaller 绿色版构建通过。
+- 打包版 GUI 冒烟通过。
+- Inno Setup 安装包构建通过。
+- 当前用户版已覆盖安装到 0.3.9，注册表 DisplayVersion = 0.3.9。
+- D:\ 根目录分发副本：
+  D:\飞船下载工具-Setup-0.3.9.exe
+- 项目 release 安装包：
+  D:\飞船下载工具开发
+elease\飞船下载工具-Setup-0.3.9.exe
+- 安装包大小：
+  115,929,813 字节
+- 安装包 SHA-256：
+  0E020DA66094628D90AE23A4BAC9B54F0C68E318B80A643E6E90165137BD7BEF
+- 已上传 0.3.9 安装包到服务器 _incoming，远端临时文件大小 115929813，SHA-256 为 0e020da66094628d90ae23a4bac9b54f0c68e318b80a643e6e90165137bd7bef。
+- 已在 /opt/update-server/deploy 的 Docker web 容器中通过 Django ORM 创建并发布 0.3.9 Release，release id 为 18。
+- 服务器正式包路径：
+  feichuan_download_tool/windows/stable/0.3.9/4da3375211964e68a686e446b6e3cc9e.exe
+- 更新接口验证通过：current_version=0.3.8 返回 update_available=true、latest_version=0.3.9、download_url=https://update.327802521.xyz/api/v1/updates/download/18/；current_version=0.3.9 返回 update_available=false、latest_version=0.3.9、download_url=null。
+- 已按接口返回的 download_url 下载 EXE，下载文件大小 115929813，SHA-256 与本地一致。
+- 已用原始响应字节按 UTF-8 解码确认 release_notes 中文正常。
+- 服务器 _incoming 临时上传文件已清理。
+- 本地验证下载副本已清理。
+- 新增底层开发规则：新增代码或工具组件前，先到 github.com 检索成熟开源方案，合适则优先复用，节省资源。
+
+2026-07-24
+
+- 完成并发布 0.3.7。
+- 默认下载目录从 D:\ 改为当前 Windows 用户的“下载”文件夹；用户手动选择目录后继续沿用用户选择。
+- 合集、主页、频道和分类页下载时，会在下载文件夹内自动建立任务子文件夹。
+- 主界面新增“品质和格式”组合框，默认“默认最高品质下载”，也可选择“每次下载前选择品质或格式”。
+- 默认最高品质不再为了 mp4 优先牺牲清晰度；最高品质可能输出 webm、mkv 等来源实际格式。
+- MP3 不做转换，只有来源直接提供 MP3 时才显示 MP3 选项。
+- 首次启动 0.3.7 显示使用说明弹窗；按当前用户、当前版本只显示一次。
+- 删除“回退下载核心”按钮和用户可操作回退入口；下载核心更新后用户界面只使用最新版。
+- 完整离线 smoke 17 项通过。
+- 源码 GUI/UIA 冒烟通过。
+- PyInstaller 绿色版构建通过。
+- 打包版 GUI 冒烟通过。
+- Inno Setup 安装包构建通过。
+- 当前用户版已覆盖安装到 0.3.7。
+- stable 更新服务器已发布 0.3.7，release id 为 14。
+- D:\ 根目录分发副本：
+  D:\飞船下载工具-Setup-0.3.7.exe
+- 项目 release 安装包：
+  D:\飞船下载工具开发\release\飞船下载工具-Setup-0.3.7.exe
+- 安装包大小：
+  115,569,074 字节
+- 安装包 SHA-256：
+  A6BB22DB70952F4276A911452BE2941E12CD3BC9F01B5C07A9BCD4F08554114F
+
+2026-07-25
+
+- 完成 0.3.8 本地开发、构建和当前用户覆盖安装。
+- 通用修复抖音图文 /note/<id> 单作品误下载短 MP4 的问题；图文作品优先保存真实背景音频 MP3/M4A，不硬编码本次作品 ID 或媒体地址。
+- 普通抖音 /video/<id> 视频仍保持视频优先，抖音批量、YouTube 和普通网站路径保持原有行为。
+- 新增离线回归：/note/ 候选中有短 MP4 和 audio/mpeg 时选择 MP3；/note/ 只有视频候选时不接受；/video/ 仍选择视频；短链解析后的真实 /note/ URL 会传给下载器。
+- Python 编译通过。
+- 完整离线 smoke 17 项通过。
+- 源码 GUI/UIA 冒烟通过。
+- 用户提供的真实抖音图文链接源码验证通过：下载结果为 .mp3，大小 6,845,380 字节，ffprobe 输出 audio。
+- PyInstaller 绿色版构建通过。
+- 打包版 GUI 冒烟通过。
+- Inno Setup 安装包构建通过。
+- 当前用户版已覆盖安装到 0.3.8，注册表 DisplayVersion = 0.3.8。
+- 用户已人工确认安装版使用本次抖音图文链接下载成功。
+- D:\ 根目录分发副本：
+  D:\飞船下载工具-Setup-0.3.8.exe
+- 项目 release 安装包：
+  D:\飞船下载工具开发\release\飞船下载工具-Setup-0.3.8.exe
+- 安装包大小：
+  115,565,972 字节
+- 安装包 SHA-256：
+  B3A253BE29C299E0363814CAC8BDC793F396AE11D6AE70639AC8718480B21D62
+- 2026-07-25 重新检查更新服务器：154.23.163.68 TCP 22 可连通，update.327802521.xyz TCP 443 可连通，更新检查接口可响应。
+- 已上传 0.3.8 安装包到服务器 _incoming，远端临时文件大小 115565972，SHA-256 为 b3a253be29c299e0363814cac8bdc793f396ae11d6ae70639ac8718480b21d62。
+- 已在 /opt/update-server/deploy 的 Docker web 容器中通过 Django ORM 创建并发布 0.3.8 Release，release id 为 15。
+- 服务器正式包路径：
+  feichuan_download_tool/windows/stable/0.3.8/0d366f6cd89542d49a2d0c4e5eed703b.exe
+- 更新接口验证通过：current_version=0.3.7 返回 update_available=true、latest_version=0.3.8、download_url=https://update.327802521.xyz/api/v1/updates/download/15/；current_version=0.3.8 返回 update_available=false、latest_version=0.3.8、download_url=null。
+- 已按接口返回的 download_url 下载 EXE，下载文件大小 115565972，SHA-256 与本地一致。
+- 已用原始响应字节按 UTF-8 解码确认 release_notes 中文正常。
+- 服务器 _incoming 临时上传文件已清理。
+- 本地验证下载副本已清理。
+
+2026-07-23
+
+- D:\ 根目录只保留便于分发的安装包 EXE，例如 D:\飞船下载工具-Setup-0.3.6.exe。
+- D:\ 根目录不再保留安装包 .sha256 副本；该文件不是软件运行、覆盖安装或服务器自动更新所必需。
+- 发布审计用 SHA-256 仍保留在项目 release 目录，例如：
+  D:\飞船下载工具开发\release\飞船下载工具-Setup-0.3.6.exe.sha256。
+- 后续复制安装包到 D:\ 根目录时，只复制 EXE，并主动删除同名 .sha256 根目录副本。

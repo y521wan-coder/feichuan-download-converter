@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# GUI 绿色版冒烟测试。
+pywinauto>=0.6.9
+
+# 后续可收集的单元与集成测试；现有 smoke 由 scripts/run_smoke.py 统一调度。
+pytest>=9.0
