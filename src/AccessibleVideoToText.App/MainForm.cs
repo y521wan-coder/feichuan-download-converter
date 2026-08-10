@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using AccessibleVideoToText.Core;
 using AccessibleVideoToText.Infrastructure;
 
@@ -14,6 +15,9 @@ public sealed class MainForm : Form
     private readonly JsonJobStore jobStore;
     private readonly JsonUsageLedger usageLedger;
     private readonly LocalVideoProcessor localVideoProcessor;
+    private readonly TextBox linkInput = new();
+    private readonly ComboBox processingMode = new();
+    private readonly TabControl taskTabs = new();
     private readonly ListView queueList = new();
     private readonly Label statusLabel = new();
     private readonly ProgressBar progressBar = new();
@@ -24,10 +28,15 @@ public sealed class MainForm : Form
     private readonly Button outputButton = new();
     private readonly OpenFileDialog openFileDialog = new();
     private readonly NotifyIcon trayIcon = new();
+    private readonly ToolStripMenuItem qualityBestItem = new("最高品质（默认）");
+    private readonly ToolStripMenuItem qualityAskItem = new("每次询问品质");
+    private readonly ToolStripMenuItem douyinLoginItem = new("抖音专用登录") { CheckOnClick = true };
     private CancellationTokenSource? batchCancellation;
     private CancellationTokenSource? currentItemCancellation;
     private TaskCompletionSource? batchCompletion;
     private SystemSleepInhibitor? sleepInhibitor;
+    private FeichuanWorkerClient? workerClient;
+    private string? currentResultDirectory;
     private AppSettings settings = new();
     private bool skipCurrentRequested;
     private bool stopBatchRequested;
@@ -38,8 +47,8 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "无障碍视频转文字";
-        AccessibleName = "无障碍视频转文字主窗口";
+        Text = "飞船下载转换工具";
+        AccessibleName = "飞船下载转换工具主窗口";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(760, 560);
         Size = new Size(920, 680);
@@ -68,26 +77,27 @@ public sealed class MainForm : Form
         openFileDialog.Filter = "视频和 MP3|*.mp4;*.mkv;*.mov;*.avi;*.wmv;*.flv;*.webm;*.m4v;*.mpeg;*.mpg;*.ts;*.m2ts;*.3gp;*.mp3|所有文件|*.*";
 
         ConfigureTrayIcon();
-        Resize += (_, _) =>
-        {
-            if (WindowState == FormWindowState.Minimized)
-            {
-                HideToTray();
-            }
-        };
         FormClosing += HandleFormClosing;
-        FormClosed += (_, _) =>
+        FormClosed += async (_, _) =>
         {
             trayIcon.Visible = false;
             trayIcon.Dispose();
             sleepInhibitor?.Dispose();
+            if (workerClient is not null)
+            {
+                await workerClient.DisposeAsync();
+                workerClient = null;
+            }
         };
 
         Shown += async (_, _) =>
         {
             await LoadSettingsAsync();
-            queueList.Focus();
+            await LoadWorkerPreferencesAsync();
+            await ShowFirstRunHelpIfNeededAsync();
             await PromptForPendingRecoveryAsync();
+            linkInput.Focus();
+            linkInput.SelectAll();
         };
     }
 
@@ -95,7 +105,7 @@ public sealed class MainForm : Form
     {
         if (keyData == (Keys.Control | Keys.V))
         {
-            PasteClipboardFiles();
+            PasteClipboardContent();
             return true;
         }
 
@@ -136,7 +146,7 @@ public sealed class MainForm : Form
         fileMenu.DropDownItems.AddRange([openItem, new ToolStripSeparator(), exitItem]);
 
         var actionMenu = new ToolStripMenuItem("操作(&A)");
-        var pasteItem = new ToolStripMenuItem("粘贴资源管理器文件(&V)", null, (_, _) => PasteClipboardFiles())
+        var pasteItem = new ToolStripMenuItem("粘贴链接或资源管理器文件(&V)", null, (_, _) => PasteClipboardContent())
         {
             ShortcutKeys = Keys.Control | Keys.V
         };
@@ -148,16 +158,51 @@ public sealed class MainForm : Form
         {
             ShortcutKeys = Keys.Alt | Keys.O
         };
-        actionMenu.DropDownItems.AddRange([pasteItem, settingsItem, outputItem]);
+        var downloadFolderItem = new ToolStripMenuItem(
+            "下载文件夹(&D)",
+            null,
+            async (_, _) => await ChooseDownloadFolderAsync());
+        var qualityMenu = new ToolStripMenuItem("品质选择(&Q)");
+        qualityBestItem.Checked = true;
+        qualityBestItem.Click += async (_, _) => await SetQualityModeAsync(askEachTime: false);
+        qualityAskItem.Click += async (_, _) => await SetQualityModeAsync(askEachTime: true);
+        qualityMenu.DropDownItems.AddRange([qualityBestItem, qualityAskItem]);
+        douyinLoginItem.ToolTipText = "需要时用软件独立浏览器资料登录抖音；不读取日常浏览器 Cookie。";
+        var clearDouyinLogin = new ToolStripMenuItem(
+            "清除抖音专用登录(&C)",
+            null,
+            async (_, _) => await ClearDouyinLoginAsync());
+        actionMenu.DropDownItems.AddRange([
+            pasteItem,
+            downloadFolderItem,
+            qualityMenu,
+            douyinLoginItem,
+            clearDouyinLogin,
+            new ToolStripSeparator(),
+            settingsItem,
+            outputItem
+        ]);
+
+        var updateMenu = new ToolStripMenuItem("更新(&U)");
+        var softwareUpdate = new ToolStripMenuItem(
+            "手动检查软件更新(&S)",
+            null,
+            async (_, _) => await CheckSoftwareUpdateAsync());
+        var coreUpdate = new ToolStripMenuItem(
+            "手动检查下载核心更新(&C)",
+            null,
+            async (_, _) => await CheckCoreUpdateAsync());
+        updateMenu.DropDownItems.AddRange([softwareUpdate, coreUpdate]);
 
         var helpMenu = new ToolStripMenuItem("帮助(&H)");
         var keyboardHelp = new ToolStripMenuItem("键盘和云端帮助(&H)", null, (_, _) => ShowHelp())
         {
             ShortcutKeys = Keys.F1
         };
-        helpMenu.DropDownItems.Add(keyboardHelp);
+        var donation = new ToolStripMenuItem("打赏(&D)", null, (_, _) => ShowDonation());
+        helpMenu.DropDownItems.AddRange([keyboardHelp, donation]);
 
-        menu.Items.AddRange([fileMenu, actionMenu, helpMenu]);
+        menu.Items.AddRange([fileMenu, actionMenu, updateMenu, helpMenu]);
         return menu;
     }
 
@@ -171,20 +216,73 @@ public sealed class MainForm : Form
             RowCount = 8
         };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 62));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var queueLabel = new Label
+        var linkLabel = new Label
         {
-            Text = "文件队列（Ctrl+V 粘贴资源管理器中复制的文件）",
+            Text = "下载链接或平台分享文本(&L)",
             AutoSize = true,
-            AccessibleName = "文件队列说明"
+            AccessibleName = "下载链接或平台分享文本标签"
         };
+
+        linkInput.Dock = DockStyle.Top;
+        linkInput.AccessibleName = "下载链接或平台分享文本";
+        linkInput.AccessibleDescription = "粘贴普通下载链接或平台完整分享文本。在此处按 Enter 开始。";
+        linkInput.PlaceholderText = "请粘贴下载链接或平台分享文本";
+        linkInput.TabIndex = 0;
+        linkInput.TextChanged += (_, _) => UpdateButtons();
+        linkInput.KeyDown += (_, eventArgs) =>
+        {
+            if (eventArgs.KeyCode == Keys.Enter)
+            {
+                eventArgs.SuppressKeyPress = true;
+                StartCurrentInput();
+            }
+        };
+        linkLabel.TabIndex = 0;
+
+        var modePanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0, 8, 0, 8)
+        };
+        var modeLabel = new Label
+        {
+            Text = "处理模式(&M)",
+            AutoSize = true,
+            AccessibleName = "处理模式标签",
+            Margin = new Padding(0, 6, 8, 0)
+        };
+        processingMode.DropDownStyle = ComboBoxStyle.DropDownList;
+        processingMode.AccessibleName = "处理模式";
+        processingMode.AccessibleDescription = "上下方向键选择处理方式，在此处按 Enter 开始。";
+        processingMode.Items.AddRange([
+            "只下载",
+            "下载后转换为 MP3",
+            "下载、转换 MP3 并生成 TXT"
+        ]);
+        processingMode.SelectedIndex = 0;
+        processingMode.TabIndex = 1;
+        processingMode.Width = 300;
+        processingMode.KeyDown += (_, eventArgs) =>
+        {
+            if (eventArgs.KeyCode == Keys.Enter)
+            {
+                eventArgs.SuppressKeyPress = true;
+                StartCurrentInput();
+            }
+        };
+        modePanel.Controls.Add(modeLabel);
+        modePanel.Controls.Add(processingMode);
 
         queueList.Dock = DockStyle.Fill;
         queueList.View = View.Details;
@@ -200,7 +298,33 @@ public sealed class MainForm : Form
         queueList.Columns.Add("当前步骤和结果", 360);
         queueList.SelectedIndexChanged += (_, _) => UpdateButtons();
 
-        statusLabel.Text = "状态：空闲。请按 Ctrl+V 粘贴文件，或按 Ctrl+O 添加文件。";
+        var queuePage = new TabPage("任务队列")
+        {
+            AccessibleName = "任务队列页"
+        };
+        queuePage.Controls.Add(queueList);
+
+        resultText.Dock = DockStyle.Fill;
+        resultText.Multiline = true;
+        resultText.ReadOnly = true;
+        resultText.ScrollBars = ScrollBars.Vertical;
+        resultText.AccessibleName = "状态与日志";
+        resultText.AccessibleDescription = "显示本次运行的非敏感状态、错误和结果摘要。";
+        resultText.Text = "尚未处理任何任务。";
+
+        var statusPage = new TabPage("状态与日志")
+        {
+            AccessibleName = "状态与日志页"
+        };
+        statusPage.Controls.Add(resultText);
+
+        taskTabs.Dock = DockStyle.Fill;
+        taskTabs.AccessibleName = "任务与状态页签";
+        taskTabs.TabIndex = 2;
+        taskTabs.TabPages.Add(queuePage);
+        taskTabs.TabPages.Add(statusPage);
+
+        statusLabel.Text = "状态：空闲。请粘贴分享文本，或从资源管理器复制文件后按 Ctrl+V。";
         statusLabel.AutoSize = true;
         statusLabel.Margin = new Padding(0, 10, 0, 4);
         statusLabel.AccessibleName = "当前任务状态";
@@ -221,10 +345,10 @@ public sealed class MainForm : Form
             Margin = new Padding(0, 8, 0, 8)
         };
 
-        startButton.Text = "开始处理(&B)";
+        startButton.Text = "开始(&B)";
         startButton.AutoSize = true;
         startButton.Enabled = false;
-        startButton.Click += (_, _) => ConfirmQueuedBatch();
+        startButton.Click += (_, _) => StartCurrentInput();
 
         removeButton.Text = "从队列移除(&R)";
         removeButton.AutoSize = true;
@@ -242,21 +366,6 @@ public sealed class MainForm : Form
 
         buttonPanel.Controls.AddRange([startButton, removeButton, cancelButton, outputButton]);
 
-        var resultLabel = new Label
-        {
-            Text = "本批结果",
-            AutoSize = true,
-            AccessibleName = "本批结果标题"
-        };
-
-        resultText.Dock = DockStyle.Fill;
-        resultText.Multiline = true;
-        resultText.ReadOnly = true;
-        resultText.ScrollBars = ScrollBars.Vertical;
-        resultText.AccessibleName = "本批结果";
-        resultText.AccessibleDescription = "可重新查看本批成功、失败、保存位置和数量。";
-        resultText.Text = "尚未处理任何批次。";
-
         var privacyLabel = new Label
         {
             AutoSize = true,
@@ -264,13 +373,13 @@ public sealed class MainForm : Form
             AccessibleName = "隐私提示"
         };
 
-        layout.Controls.Add(queueLabel, 0, 0);
-        layout.Controls.Add(queueList, 0, 1);
-        layout.Controls.Add(statusLabel, 0, 2);
-        layout.Controls.Add(progressBar, 0, 3);
-        layout.Controls.Add(buttonPanel, 0, 4);
-        layout.Controls.Add(resultLabel, 0, 5);
-        layout.Controls.Add(resultText, 0, 6);
+        layout.Controls.Add(linkLabel, 0, 0);
+        layout.Controls.Add(linkInput, 0, 1);
+        layout.Controls.Add(modePanel, 0, 2);
+        layout.Controls.Add(taskTabs, 0, 3);
+        layout.Controls.Add(statusLabel, 0, 4);
+        layout.Controls.Add(progressBar, 0, 5);
+        layout.Controls.Add(buttonPanel, 0, 6);
         layout.Controls.Add(privacyLabel, 0, 7);
         return layout;
     }
@@ -291,6 +400,51 @@ public sealed class MainForm : Form
         {
             queueList.Focus();
         }
+    }
+
+    private void PasteClipboardContent()
+    {
+        if (IsProcessing)
+        {
+            ReportStatus("正在处理，已拒绝新粘贴。请等待任务结束或取消任务。", true);
+            return;
+        }
+
+        try
+        {
+            var containsFileDrop = Clipboard.ContainsFileDropList();
+            var containsUnicodeText = Clipboard.ContainsText(TextDataFormat.UnicodeText);
+            var containsText = containsUnicodeText || Clipboard.ContainsText();
+            switch (ClipboardFormatRouter.Choose(containsFileDrop, containsText))
+            {
+                case ClipboardPayloadKind.FileDrop:
+                    linkInput.Clear();
+                    PasteClipboardFiles();
+                    return;
+                case ClipboardPayloadKind.Text:
+                    var text = containsUnicodeText
+                        ? Clipboard.GetText(TextDataFormat.UnicodeText)
+                        : Clipboard.GetText();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        linkInput.Text = text.Trim();
+                        linkInput.Focus();
+                        linkInput.SelectionStart = linkInput.TextLength;
+                        ReportStatus("已粘贴下载链接或平台分享文本。按 Enter 开始。", false);
+                        UpdateButtons();
+                        return;
+                    }
+
+                    break;
+            }
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            ReportStatus("暂时无法读取剪贴板，请稍后重试。", true);
+            return;
+        }
+
+        ReportStatus("剪贴板中没有可用的文本或资源管理器文件。", true);
     }
 
     private void PasteClipboardFiles()
@@ -353,6 +507,697 @@ public sealed class MainForm : Form
         row.SubItems.Add(item.Stage.ToAccessibleText());
         row.SubItems.Add(item.StepDetail);
         return row;
+    }
+
+    private async void StartCurrentInput()
+    {
+        if (IsProcessing)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(linkInput.Text))
+        {
+            await StartLinkTaskAsync();
+            return;
+        }
+
+        if (queueList.Items.Count > 0)
+        {
+            ConfirmQueuedBatch();
+            return;
+        }
+
+        ReportStatus("请先输入下载链接或粘贴资源管理器文件。", true);
+        linkInput.Focus();
+    }
+
+    private async Task StartLinkTaskAsync()
+    {
+        var input = linkInput.Text.Trim();
+        if (input.Length == 0)
+        {
+            return;
+        }
+
+        var selectedMode = processingMode.SelectedIndex;
+        DownloadProtocolOutcome? outcome = null;
+        IsProcessing = true;
+        previousBatchFinished = false;
+        stopBatchRequested = false;
+        batchCancellation = new CancellationTokenSource();
+        batchCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        UpdateButtons();
+        UpdateTrayStatus("正在下载");
+        ReportStatus("正在启动下载工作进程并扫描链接。", false);
+        try
+        {
+            var client = await EnsureWorkerClientAsync(batchCancellation.Token);
+            var qualityPreference = "best";
+            if (qualityAskItem.Checked)
+            {
+                ReportStatus("正在查询当前链接可用的品质和格式。", false);
+                var qualityResponse = await client.SendAsync(
+                    "quality.inspect",
+                    new { text = input, playlist_mode = "single" },
+                    batchCancellation.Token);
+                var qualityOptions = qualityResponse.Payload.GetProperty("choices")
+                    .EnumerateArray()
+                    .Select(item => new DownloadChoiceOption(
+                        item.GetProperty("value").GetString() ?? "best",
+                        item.GetProperty("label").GetString() ?? "最高品质"))
+                    .ToArray();
+                using var qualityDialog = new QualitySelectionDialog(qualityOptions);
+                if (qualityDialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    ReportStatus("已取消本次下载；没有创建或修改媒体文件。", false);
+                    return;
+                }
+
+                qualityPreference = qualityDialog.Preference;
+            }
+
+            var response = await client.SendAsync(
+                "task.start",
+                new
+                {
+                    text = input,
+                    interactive_douyin_login = douyinLoginItem.Checked,
+                    quality_preference = qualityPreference
+                },
+                batchCancellation.Token);
+            outcome = await CompleteDownloadProtocolAsync(
+                client,
+                response,
+                qualityPreference,
+                batchCancellation.Token);
+            if (outcome is not null)
+            {
+                SetCurrentResultDirectory(outcome.Paths.FirstOrDefault());
+                var names = outcome.Paths.Select(Path.GetFileName).Where(name => !string.IsNullOrWhiteSpace(name));
+                resultText.Text = outcome.Summary + Environment.NewLine +
+                    string.Join(Environment.NewLine, names);
+                ReportStatus(outcome.Summary, false);
+            }
+            else
+            {
+                ReportStatus("下载已由用户取消；没有开始后续转换。", false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (workerClient?.IsRunning == true)
+            {
+                await workerClient.CancelOrTerminateAsync(TimeSpan.FromSeconds(5));
+            }
+            ReportStatus("下载任务已取消；已完成的下载结果不会删除。", false);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"下载工作进程错误：{ToActionableError(exception)}", true);
+        }
+        finally
+        {
+            IsProcessing = false;
+            previousBatchFinished = true;
+            batchCancellation.Dispose();
+            batchCancellation = null;
+            ResetProcessingMode();
+            UpdateButtons();
+            UpdateTrayStatus("空闲");
+            batchCompletion?.TrySetResult();
+        }
+
+        if (outcome is not null && selectedMode > 0)
+        {
+            await BeginDownloadedPostProcessingAsync(outcome, selectedMode);
+        }
+    }
+
+    private async Task<DownloadProtocolOutcome?> CompleteDownloadProtocolAsync(
+        FeichuanWorkerClient client,
+        WorkerMessage response,
+        string qualityPreference,
+        CancellationToken cancellationToken)
+    {
+        var wasBatch = false;
+        while (true)
+        {
+            var kind = response.Payload.GetProperty("kind").GetString() ?? string.Empty;
+            if (kind == "download")
+            {
+                var paths = response.Payload.GetProperty("paths")
+                    .EnumerateArray()
+                    .Select(item => item.GetString())
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Cast<string>()
+                    .ToArray();
+                var succeeded = response.Payload.TryGetProperty("succeeded", out var succeededElement)
+                    ? succeededElement.GetInt32()
+                    : paths.Length;
+                var skipped = response.Payload.TryGetProperty("skipped", out var skippedElement)
+                    ? skippedElement.GetInt32()
+                    : 0;
+                var failed = response.Payload.TryGetProperty("failed", out var failedElement)
+                    ? failedElement.GetInt32()
+                    : 0;
+                return new DownloadProtocolOutcome(
+                    paths,
+                    wasBatch,
+                    $"下载结束：成功 {succeeded} 个，跳过 {skipped} 个，失败 {failed} 个。源下载文件保持不变。");
+            }
+
+            var operationId = response.Payload.GetProperty("operation_id").GetString() ?? string.Empty;
+            if (kind == "batch_confirmation")
+            {
+                wasBatch = true;
+                var scan = response.Payload.GetProperty("scan");
+                var count = scan.GetProperty("unique_count").GetInt32();
+                var complete = scan.GetProperty("enumeration_complete").GetBoolean();
+                var title = scan.GetProperty("source_title").GetString();
+                if (string.IsNullOrWhiteSpace(title))
+                {
+                    title = scan.GetProperty("author").GetString();
+                }
+
+                var options = response.Payload.GetProperty("choices")
+                    .EnumerateArray()
+                    .Select(item => item.GetString() ?? string.Empty)
+                    .Where(value => value.Length > 0)
+                    .Select(value => new DownloadChoiceOption(value, DownloadChoiceLabel(value)))
+                    .ToArray();
+                var summary = $"扫描完成：{(string.IsNullOrWhiteSpace(title) ? "批量来源" : title)}，" +
+                    $"发现 {count} 个，枚举{(complete ? "完整" : "不完整")}。";
+                using var dialog = new BatchDownloadConfirmationDialog(summary, options);
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    await ReleaseWorkerOperationAsync(client, operationId, cancellationToken);
+                    return null;
+                }
+
+                response = await client.SendAsync(
+                    "prepared.download",
+                    new
+                    {
+                        operation_id = operationId,
+                        choice = dialog.Choice,
+                        quality_preference = qualityPreference
+                    },
+                    cancellationToken);
+                continue;
+            }
+
+            if (kind == "generic_confirmation")
+            {
+                wasBatch = true;
+                var inspectionError = response.Payload.GetProperty("inspection_error").GetString() ?? string.Empty;
+                var title = string.Empty;
+                var count = 0;
+                var preview = Array.Empty<string>();
+                var inspection = response.Payload.GetProperty("inspection");
+                if (inspection.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    title = inspection.GetProperty("title").GetString() ?? string.Empty;
+                    count = inspection.GetProperty("count").GetInt32();
+                    preview = inspection.GetProperty("entries_preview")
+                        .EnumerateArray()
+                        .Select(item => item.GetString() ?? string.Empty)
+                        .Where(item => item.Length > 0)
+                        .ToArray();
+                }
+
+                using var dialog = new GenericDownloadConfirmationDialog(
+                    title,
+                    count,
+                    preview,
+                    inspectionError);
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    await ReleaseWorkerOperationAsync(client, operationId, cancellationToken);
+                    return null;
+                }
+
+                response = await client.SendAsync(
+                    "generic.download",
+                    new
+                    {
+                        operation_id = operationId,
+                        playlist_mode = dialog.PlaylistMode,
+                        quality_preference = qualityPreference
+                    },
+                    cancellationToken);
+                continue;
+            }
+
+            throw new WorkerProtocolException("unexpected_result", "下载工作进程返回了未知结果。");
+        }
+    }
+
+    private static string DownloadChoiceLabel(string value) => value switch
+    {
+        "incremental" => "增量下载：跳过已有有效结果",
+        "redownload_all" => "重新下载全部：仍不覆盖已有文件",
+        "retry_failed" => "只重试失败项",
+        "discovered_only" => "枚举不完整：只下载已发现项目",
+        _ => value
+    };
+
+    private static async Task ReleaseWorkerOperationAsync(
+        FeichuanWorkerClient client,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(operationId))
+        {
+            await client.SendAsync(
+                "operation.release",
+                new { operation_id = operationId },
+                cancellationToken);
+        }
+    }
+
+    private async Task BeginDownloadedPostProcessingAsync(
+        DownloadProtocolOutcome outcome,
+        int selectedMode)
+    {
+        var plans = DownloadPipelinePlanner.Create(outcome.Paths);
+        var processable = plans.Where(plan => plan.Action != DownloadedMediaAction.Skip).ToArray();
+        var skipped = plans.Where(plan => plan.Action == DownloadedMediaAction.Skip).ToArray();
+        if (skipped.Length > 0)
+        {
+            resultText.AppendText(Environment.NewLine + Environment.NewLine +
+                string.Join(Environment.NewLine, skipped.Select(plan =>
+                    $"{Path.GetFileName(plan.Path)}：已跳过后续处理；{plan.Reason}。")));
+        }
+
+        if (processable.Length == 0)
+        {
+            ReportStatus("下载成功，但结果中没有可转换的视频或可识别的 MP3；文件已保留。", true);
+            return;
+        }
+
+        if (outcome.WasBatch && MessageBox.Show(
+                this,
+                $"批量下载已经结束，共有 {processable.Length} 个结果可继续处理。是否现在开始“{ProcessingModeName(selectedMode)}”？",
+                "确认后续处理",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            ReportStatus("下载成功；已取消后续转换，下载结果全部保留。", false);
+            return;
+        }
+
+        queueList.Items.Clear();
+        foreach (var plan in processable)
+        {
+            var kind = plan.Action == DownloadedMediaAction.UseExistingMp3
+                ? MediaKind.Mp3
+                : MediaKind.Video;
+            queueList.Items.Add(CreateQueueRow(new QueueItem(plan.Path, kind)));
+        }
+
+        if (queueList.Items.Count > 0)
+        {
+            queueList.Items[0].Selected = true;
+            queueList.Items[0].Focused = true;
+        }
+
+        var decision = selectedMode == 2
+            ? new PasteDecision(true, true, true, false)
+            : new PasteDecision(true, false, false, false);
+        if (selectedMode == 2)
+        {
+            await StartCloudBatchAsync(decision);
+        }
+        else
+        {
+            await StartLocalBatchAsync(decision);
+        }
+    }
+
+    private static string ProcessingModeName(int index) => index switch
+    {
+        1 => "下载后转换为 MP3",
+        2 => "下载、转换 MP3 并生成 TXT",
+        _ => "只下载"
+    };
+
+    private sealed record DownloadProtocolOutcome(
+        IReadOnlyList<string> Paths,
+        bool WasBatch,
+        string Summary);
+
+    private async Task<FeichuanWorkerClient> EnsureWorkerClientAsync(CancellationToken cancellationToken)
+    {
+        if (workerClient?.IsRunning == true)
+        {
+            return workerClient;
+        }
+
+        if (workerClient is not null)
+        {
+            await workerClient.DisposeAsync();
+            workerClient = null;
+        }
+
+        var installedWorker = Path.Combine(AppContext.BaseDirectory, "feichuan-worker.exe");
+        WorkerLaunchOptions options;
+        if (File.Exists(installedWorker))
+        {
+            options = new WorkerLaunchOptions(installedWorker, WorkingDirectory: AppContext.BaseDirectory);
+        }
+        else
+        {
+            var repositoryRoot = FindDevelopmentRepositoryRoot();
+            if (repositoryRoot is null)
+            {
+                throw new WorkerProcessException("找不到 feichuan-worker.exe，请重新安装或重新构建工作进程。");
+            }
+
+            var workerRoot = Path.Combine(repositoryRoot, "worker");
+            var workerMain = Path.Combine(workerRoot, "src", "worker_main.py");
+            options = new WorkerLaunchOptions(
+                "python",
+                [workerMain],
+                workerRoot,
+                new Dictionary<string, string>
+                {
+                    ["PYTHONPATH"] = Path.Combine(workerRoot, "src"),
+                    ["PYTHONDONTWRITEBYTECODE"] = "1",
+                    ["FEICHUAN_AUTO_UPDATE_CORE"] = "0",
+                    ["FEICHUAN_SOFTWARE_UPDATE_ENDPOINT"] = string.Empty
+                });
+        }
+
+        var client = new FeichuanWorkerClient(options);
+        client.EventReceived += (_, message) =>
+        {
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() => ApplyWorkerEvent(message));
+            }
+        };
+        client.DiagnosticReceived += (_, line) =>
+        {
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() => ReportStatus($"下载内核：{line}", true));
+            }
+        };
+        try
+        {
+            await client.StartAsync(cancellationToken);
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            throw;
+        }
+
+        workerClient = client;
+        return client;
+    }
+
+    private async Task LoadWorkerPreferencesAsync()
+    {
+        try
+        {
+            var client = await EnsureWorkerClientAsync(CancellationToken.None);
+            var quality = await client.SendAsync("quality_mode.get", new { }, CancellationToken.None);
+            var askEachTime = string.Equals(
+                quality.Payload.GetProperty("mode").GetString(),
+                "ask_each_time",
+                StringComparison.Ordinal);
+            qualityBestItem.Checked = !askEachTime;
+            qualityAskItem.Checked = askEachTime;
+
+            var login = await client.SendAsync("douyin_login.status", new { }, CancellationToken.None);
+            douyinLoginItem.Checked = login.Payload.TryGetProperty("saved", out var saved) && saved.GetBoolean();
+        }
+        catch (Exception exception) when (
+            exception is WorkerProcessException or WorkerProtocolException or IOException)
+        {
+            qualityBestItem.Checked = true;
+            qualityAskItem.Checked = false;
+            ReportStatus($"下载工作进程暂时不可用：{ToActionableError(exception)}", true);
+        }
+    }
+
+    private async Task ChooseDownloadFolderAsync()
+    {
+        if (IsProcessing)
+        {
+            ReportStatus("任务进行中不能更改下载文件夹。", true);
+            return;
+        }
+
+        try
+        {
+            var client = await EnsureWorkerClientAsync(CancellationToken.None);
+            var current = await client.SendAsync("download_directory.get", new { }, CancellationToken.None);
+            using var dialog = new FolderBrowserDialog
+            {
+                Description = "请选择飞船下载文件夹。已有媒体不会被删除或覆盖。",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true,
+                SelectedPath = current.Payload.GetProperty("path").GetString() ?? string.Empty
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            var changed = await client.SendAsync(
+                "download_directory.set",
+                new { path = dialog.SelectedPath },
+                CancellationToken.None);
+            currentResultDirectory = changed.Payload.GetProperty("path").GetString();
+            ReportStatus("下载文件夹已保存。", false);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"无法设置下载文件夹：{ToActionableError(exception)}", true);
+        }
+    }
+
+    private async Task SetQualityModeAsync(bool askEachTime)
+    {
+        if (IsProcessing)
+        {
+            ReportStatus("任务进行中不能更改品质询问方式。", true);
+            return;
+        }
+
+        try
+        {
+            var client = await EnsureWorkerClientAsync(CancellationToken.None);
+            var response = await client.SendAsync(
+                "quality_mode.set",
+                new { mode = askEachTime ? "ask_each_time" : "best" },
+                CancellationToken.None);
+            askEachTime = string.Equals(
+                response.Payload.GetProperty("mode").GetString(),
+                "ask_each_time",
+                StringComparison.Ordinal);
+            qualityBestItem.Checked = !askEachTime;
+            qualityAskItem.Checked = askEachTime;
+            ReportStatus(askEachTime ? "每次下载前会询问品质。" : "下载品质已设为默认最高品质。", false);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"无法保存品质设置：{ToActionableError(exception)}", true);
+        }
+    }
+
+    private async Task ClearDouyinLoginAsync()
+    {
+        if (IsProcessing)
+        {
+            ReportStatus("任务进行中不能清除抖音专用登录资料。", true);
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                "这会清除软件专用的抖音浏览器资料，不影响日常浏览器。是否继续？",
+                "清除抖音专用登录",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            var client = await EnsureWorkerClientAsync(CancellationToken.None);
+            var response = await client.SendAsync("douyin_login.clear", new { }, CancellationToken.None);
+            douyinLoginItem.Checked = false;
+            var removed = response.Payload.TryGetProperty("removed", out var value) && value.GetBoolean();
+            ReportStatus(removed ? "抖音专用登录资料已清除。" : "没有找到已保存的抖音专用登录资料。", false);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"无法清除抖音专用登录资料：{ToActionableError(exception)}", true);
+        }
+    }
+
+    private async Task CheckCoreUpdateAsync()
+    {
+        if (IsProcessing)
+        {
+            ReportStatus("任务进行中不能检查下载核心更新。", true);
+            return;
+        }
+
+        try
+        {
+            var client = await EnsureWorkerClientAsync(CancellationToken.None);
+            ReportStatus("正在手动检查下载核心 stable 更新。", false);
+            var response = await client.SendAsync(
+                "core_update.check",
+                new { install = false },
+                CancellationToken.None);
+            var message = response.Payload.GetProperty("message").GetString() ?? "检查结束。";
+            var available = response.Payload.TryGetProperty("available", out var value) && value.GetBoolean();
+            if (!available)
+            {
+                MessageBox.Show(this, message, "下载核心更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ReportStatus(message, false);
+                return;
+            }
+
+            if (MessageBox.Show(
+                    this,
+                    message + "\r\n\r\n是否下载、校验并安装这个 stable 核心？",
+                    "确认更新下载核心",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                ReportStatus("已取消下载核心更新，当前核心保持不变。", false);
+                return;
+            }
+
+            response = await client.SendAsync(
+                "core_update.check",
+                new { install = true },
+                CancellationToken.None);
+            message = response.Payload.GetProperty("message").GetString() ?? "更新结束。";
+            var updated = response.Payload.TryGetProperty("updated", out value) && value.GetBoolean();
+            MessageBox.Show(
+                this,
+                message,
+                "下载核心更新",
+                MessageBoxButtons.OK,
+                updated ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            ReportStatus(message, !updated);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"检查下载核心失败：{ToActionableError(exception)}", true);
+        }
+    }
+
+    private async Task CheckSoftwareUpdateAsync()
+    {
+        if (IsProcessing)
+        {
+            ReportStatus("任务进行中不能检查软件更新。", true);
+            return;
+        }
+
+        try
+        {
+            var client = await EnsureWorkerClientAsync(CancellationToken.None);
+            ReportStatus("正在手动检查软件更新。", false);
+            var response = await client.SendAsync("software_update.check", new { }, CancellationToken.None);
+            var message = response.Payload.GetProperty("message").GetString() ?? "检查结束。";
+            var notes = response.Payload.TryGetProperty("release_notes", out var notesValue)
+                ? notesValue.GetString()
+                : null;
+            var detail = string.IsNullOrWhiteSpace(notes)
+                ? message
+                : message + "\r\n\r\n" + notes;
+            MessageBox.Show(
+                this,
+                detail,
+                "软件更新",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            ReportStatus(message, false);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"检查软件更新失败：{ToActionableError(exception)}", true);
+        }
+    }
+
+    private void ApplyWorkerEvent(WorkerMessage message)
+    {
+        if (message.Type == "task.log")
+        {
+            var line = message.Payload.TryGetProperty("message", out var lineElement)
+                ? lineElement.GetString()
+                : null;
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                resultText.AppendText(Environment.NewLine + line);
+            }
+
+            return;
+        }
+
+        if (message.Type != "task.progress")
+        {
+            return;
+        }
+
+        var stage = message.Payload.TryGetProperty("stage", out var stageElement)
+            ? stageElement.GetString() ?? "processing"
+            : "processing";
+        var status = message.Payload.TryGetProperty("message", out var messageElement)
+            ? messageElement.GetString() ?? string.Empty
+            : string.Empty;
+        if (message.Payload.TryGetProperty("overall_percent", out var percentElement) &&
+            percentElement.ValueKind == System.Text.Json.JsonValueKind.Number &&
+            percentElement.TryGetDouble(out var percent))
+        {
+            progressBar.Value = Math.Clamp((int)Math.Round(percent), 0, 100);
+            progressBar.AccessibleDescription = $"下载任务进度 {progressBar.Value}%。";
+        }
+
+        var current = message.Payload.TryGetProperty("current", out var currentElement)
+            ? currentElement.GetInt32()
+            : 0;
+        var total = message.Payload.TryGetProperty("total", out var totalElement)
+            ? totalElement.GetInt32()
+            : 0;
+        var summary = string.IsNullOrWhiteSpace(status)
+            ? total > 0 ? $"下载阶段 {stage}，当前 {current}/{total}。" : $"下载阶段 {stage}。"
+            : status;
+        statusLabel.Text = $"状态：{summary}";
+        statusLabel.AccessibleDescription = statusLabel.Text;
+    }
+
+    private static string? FindDevelopmentRepositoryRoot()
+    {
+        foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
+        {
+            var current = new DirectoryInfo(start);
+            while (current is not null)
+            {
+                if (File.Exists(Path.Combine(current.FullName, "worker", "src", "worker_main.py")))
+                {
+                    return current.FullName;
+                }
+
+                current = current.Parent;
+            }
+        }
+
+        return null;
     }
 
     private async void ConfirmQueuedBatch()
@@ -422,9 +1267,18 @@ public sealed class MainForm : Form
 
     private void UpdateButtons()
     {
-        startButton.Enabled = !IsProcessing && queueList.Items.Count > 0;
+        startButton.Enabled = !IsProcessing &&
+            (!string.IsNullOrWhiteSpace(linkInput.Text) || queueList.Items.Count > 0);
         removeButton.Enabled = !IsProcessing && queueList.SelectedItems.Count > 0;
         cancelButton.Enabled = IsProcessing;
+    }
+
+    private void ResetProcessingMode()
+    {
+        if (processingMode.Items.Count > 0)
+        {
+            processingMode.SelectedIndex = 0;
+        }
     }
 
     private async Task LoadSettingsAsync()
@@ -444,6 +1298,26 @@ public sealed class MainForm : Form
         }
     }
 
+    private async Task ShowFirstRunHelpIfNeededAsync()
+    {
+        if (settings.HasShownVersion1Help)
+        {
+            return;
+        }
+
+        using var dialog = new HelpDialog(HelpDialog.LoadContent());
+        dialog.ShowDialog(this);
+        settings = settings with { HasShownVersion1Help = true };
+        try
+        {
+            await settingsStore.SaveAsync(settings, CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ReportStatus("无法保存首次说明已读状态；下次启动可能再次显示使用说明。", true);
+        }
+    }
+
     private async Task StartLocalBatchAsync(PasteDecision decision)
     {
         var allItems = queueList.Items.Cast<ListViewItem>()
@@ -455,6 +1329,8 @@ public sealed class MainForm : Form
         {
             return;
         }
+
+        SetCurrentResultDirectory(scopedItems[0].SourcePath);
 
         IsProcessing = true;
         previousBatchFinished = false;
@@ -474,7 +1350,6 @@ public sealed class MainForm : Form
 
         UpdateTrayStatus("正在处理");
         UpdateButtons();
-        queueList.Focus();
 
         var succeeded = 0;
         var failed = 0;
@@ -593,6 +1468,7 @@ public sealed class MainForm : Form
             sleepInhibitor = null;
             progressBar.Value = 0;
             progressBar.AccessibleDescription = "批次已结束，当前没有进行中的确定进度。";
+            ResetProcessingMode();
             UpdateButtons();
 
             var summary = $"本批结束：成功 {succeeded} 个，失败 {failed} 个，跳过 {skipped} 个，已取消 {cancelled} 个，未开始 {notStarted} 个。成功的 MP3 保存在各自源文件旁边。";
@@ -601,7 +1477,6 @@ public sealed class MainForm : Form
                     $"{item.FileName}：{(string.IsNullOrWhiteSpace(item.ResultMessage) ? item.StepDetail : item.ResultMessage)}"));
             ReportStatus(summary, failed > 0);
             UpdateTrayStatus(failed > 0 ? "批次结束，有失败" : "批次完成");
-            FocusBatchResult(scopedItems);
             batchCompletion?.TrySetResult();
         }
     }
@@ -620,6 +1495,10 @@ public sealed class MainForm : Form
             .OfType<QueueItem>()
             .ToArray();
         var scopedItems = decision.FirstItemOnly ? allItems.Take(1).ToArray() : allItems;
+        if (scopedItems.Length > 0)
+        {
+            SetCurrentResultDirectory(scopedItems[0].SourcePath);
+        }
         var cloudItems = scopedItems.Where(item =>
             item.Kind == MediaKind.Mp3 ? decision.TranscribeMp3 : decision.TranscribeVideos).ToArray();
 
@@ -677,6 +1556,10 @@ public sealed class MainForm : Form
             ReportStatus("现有 MP3 的原目录不可写，且未选择备用目录；没有开始云端批次。", true);
             return;
         }
+        if (!string.IsNullOrWhiteSpace(fallbackDirectory.Path))
+        {
+            currentResultDirectory = fallbackDirectory.Path;
+        }
 
         IsProcessing = true;
         previousBatchFinished = false;
@@ -697,7 +1580,6 @@ public sealed class MainForm : Form
 
         UpdateTrayStatus("正在处理云端批次");
         UpdateButtons();
-        queueList.Focus();
 
         var succeeded = 0;
         var partiallySucceeded = 0;
@@ -883,6 +1765,7 @@ public sealed class MainForm : Form
             sleepInhibitor = null;
             progressBar.Value = 0;
             progressBar.AccessibleDescription = "批次已结束，当前没有进行中的确定进度。";
+            ResetProcessingMode();
             UpdateButtons();
 
             var summary = $"本批结束：成功 {succeeded} 个，部分成功 {partiallySucceeded} 个，失败 {failed} 个，跳过 {skipped} 个，已取消 {cancelled} 个，待恢复 {recoverable} 个，未开始 {notStarted} 个。";
@@ -891,7 +1774,6 @@ public sealed class MainForm : Form
                     $"{item.FileName}：{(string.IsNullOrWhiteSpace(item.ResultMessage) ? item.StepDetail : item.ResultMessage)}"));
             ReportStatus(summary, failed > 0 || recoverable > 0);
             UpdateTrayStatus(failed > 0 || recoverable > 0 ? "批次结束，需要检查" : "批次完成");
-            FocusBatchResult(scopedItems);
             batchCompletion?.TrySetResult();
         }
     }
@@ -1149,10 +2031,10 @@ public sealed class MainForm : Form
             sleepInhibitor?.Dispose();
             sleepInhibitor = null;
             progressBar.Value = 0;
+            ResetProcessingMode();
             UpdateButtons();
             UpdateTrayStatus("空闲");
             batchCompletion?.TrySetResult();
-            queueList.Focus();
         }
     }
 
@@ -1164,7 +2046,7 @@ public sealed class MainForm : Form
         trayMenu.Items.AddRange([showItem, exitItem]);
 
         trayIcon.Icon = SystemIcons.Application;
-        trayIcon.Text = "无障碍视频转文字：空闲";
+        trayIcon.Text = "飞船下载转换工具：空闲";
         trayIcon.Visible = false;
         trayIcon.ContextMenuStrip = trayMenu;
         trayIcon.MouseClick += (_, eventArgs) =>
@@ -1182,7 +2064,21 @@ public sealed class MainForm : Form
         if (IsProcessing && !exitRequested)
         {
             eventArgs.Cancel = true;
-            HideToTray();
+            using var dialog = new TrayExitDialog();
+            dialog.ShowDialog(this);
+            switch (dialog.Choice)
+            {
+                case TaskCloseChoice.ContinueInTray:
+                    HideToTray();
+                    break;
+                case TaskCloseChoice.CancelTaskAndExit:
+                    BeginInvoke(async () => await CancelTaskAndExitAsync());
+                    break;
+                default:
+                    linkInput.Focus();
+                    break;
+            }
+
             return;
         }
 
@@ -1201,7 +2097,7 @@ public sealed class MainForm : Form
         Show();
         WindowState = FormWindowState.Normal;
         Activate();
-        queueList.Focus();
+        linkInput.Focus();
     }
 
     private async Task ExitFromTrayAsync()
@@ -1209,18 +2105,21 @@ public sealed class MainForm : Form
         if (IsProcessing)
         {
             using var dialog = new TrayExitDialog();
-            if (dialog.ShowDialog() != DialogResult.OK)
+            dialog.ShowDialog();
+            if (dialog.Choice == TaskCloseChoice.ContinueInTray)
             {
                 UpdateTrayStatus("正在处理");
                 return;
             }
 
-            stopBatchRequested = true;
-            batchCancellation?.Cancel();
-            if (batchCompletion is not null)
+            if (dialog.Choice == TaskCloseChoice.ReturnToSoftware)
             {
-                await batchCompletion.Task;
+                ShowMainWindow();
+                return;
             }
+
+            await CancelTaskAndExitAsync();
+            return;
         }
 
         exitRequested = true;
@@ -1230,8 +2129,27 @@ public sealed class MainForm : Form
 
     private void UpdateTrayStatus(string status)
     {
-        var text = $"无障碍视频转文字：{status}";
+        var text = $"飞船下载转换工具：{status}";
         trayIcon.Text = text.Length <= 63 ? text : text[..63];
+    }
+
+    private async Task CancelTaskAndExitAsync()
+    {
+        stopBatchRequested = true;
+        batchCancellation?.Cancel();
+        if (batchCompletion is not null)
+        {
+            await batchCompletion.Task;
+        }
+
+        if (workerClient?.IsRunning == true)
+        {
+            await workerClient.CancelOrTerminateAsync(TimeSpan.FromSeconds(5));
+        }
+
+        exitRequested = true;
+        trayIcon.Visible = false;
+        Close();
     }
 
     private void ShowCancellationScopeDialog()
@@ -1282,29 +2200,6 @@ public sealed class MainForm : Form
         {
             AccessibilityNotifyClients(AccessibleEvents.NameChange, row.Index + 1);
         }
-    }
-
-    private void FocusBatchResult(IReadOnlyCollection<QueueItem> scopedItems)
-    {
-        var failedItem = scopedItems.FirstOrDefault(item => item.Stage == JobStage.Failed);
-        var target = failedItem ?? scopedItems.FirstOrDefault();
-        if (target is null)
-        {
-            queueList.Focus();
-            return;
-        }
-
-        var row = queueList.Items.Cast<ListViewItem>()
-            .FirstOrDefault(candidate => candidate.Tag is QueueItem queued && queued.Id == target.Id);
-        if (row is not null)
-        {
-            queueList.SelectedItems.Clear();
-            row.Selected = true;
-            row.Focused = true;
-            row.EnsureVisible();
-        }
-
-        queueList.Focus();
     }
 
     private static string ToActionableError(Exception exception) => exception switch
@@ -1464,14 +2359,68 @@ public sealed class MainForm : Form
 
     private void ShowOutputPlaceholder()
     {
-        MessageBox.Show(this, "结果默认保存在源文件旁边。软件不会自动打开文件或文件夹。", "结果目录", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        queueList.Focus();
+        if (string.IsNullOrWhiteSpace(currentResultDirectory) || !Directory.Exists(currentResultDirectory))
+        {
+            MessageBox.Show(
+                this,
+                "当前还没有可打开的任务结果目录。完成一次下载或转换后再按 Alt+O。",
+                "结果目录",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = currentResultDirectory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception) when (
+            exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            ReportStatus($"无法打开结果目录：{ToActionableError(exception)}", true);
+        }
+    }
+
+    private void SetCurrentResultDirectory(string? resultPath)
+    {
+        if (string.IsNullOrWhiteSpace(resultPath))
+        {
+            return;
+        }
+
+        var directory = Directory.Exists(resultPath)
+            ? resultPath
+            : Path.GetDirectoryName(resultPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            currentResultDirectory = directory;
+        }
+    }
+
+    private void ShowDonation()
+    {
+        var imagePath = Path.Combine(AppContext.BaseDirectory, "assets", "donation_qr.jpg");
+        if (!File.Exists(imagePath))
+        {
+            var repositoryRoot = FindDevelopmentRepositoryRoot();
+            imagePath = repositoryRoot is null
+                ? imagePath
+                : Path.Combine(repositoryRoot, "worker", "assets", "donation_qr.jpg");
+        }
+
+        using var dialog = new DonationDialog(imagePath);
+        dialog.ShowDialog(this);
+        linkInput.Focus();
     }
 
     private void ShowHelp()
     {
-        const string help = "Ctrl+V：粘贴资源管理器文件。\r\nCtrl+O：添加文件。\r\nDelete：只从队列移除。\r\nAlt+S：设置。\r\nAlt+O：结果目录。\r\nEsc：任务中选择取消范围。\r\n\r\n云端转文字会把临时音频上传到您自己的腾讯云私有 COS，并可能产生 ASR 和 COS 费用；真正提交前会再次确认。";
-        MessageBox.Show(this, help, "键盘和云端帮助", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        queueList.Focus();
+        using var dialog = new HelpDialog(HelpDialog.LoadContent());
+        dialog.ShowDialog(this);
+        linkInput.Focus();
     }
 }

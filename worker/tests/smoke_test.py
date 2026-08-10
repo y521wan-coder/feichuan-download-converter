@@ -34,7 +34,7 @@ from feichuan_downloader.software_updater import check_software_update
 
 
 def main() -> None:
-    assert VERSION == __version__ == "0.3.9"
+    assert VERSION == __version__ == "1.0"
     assert sanitize_filename('a<>:"/b*') == "a_____b_"
     assert safe_url_for_log("https://example.test/media.mp4?token=secret") == (
         "https://example.test/media.mp4"

@@ -35,7 +35,7 @@ python .\scripts\run_smoke.py
 ```powershell
 Set-Location D:\FeichuanDownloadConverterDev
 $env:PATH = "D:\FeichuanDownloadConverterDev\worker\tools;$env:PATH"
-& .\tools\dotnet\dotnet.exe test .\AccessibleVideoToText.slnx --configuration Release --verbosity minimal
+& .\tools\dotnet\dotnet.exe test .\FeichuanDownloadConverter.slnx --configuration Release --verbosity minimal
 ```
 
 结果：还原成功；Core、Infrastructure、App、Tests Release 构建成功；测试 38/38 通过，0 失败，

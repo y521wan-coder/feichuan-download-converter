@@ -25,6 +25,8 @@ artifacts/portable/current/*
 !artifacts/portable/current/.gitkeep
 artifacts/releases/*
 !artifacts/releases/.gitkeep
+artifacts/candidate/
+artifacts/acceptance/
 worker/build/
 worker/dist/
 worker/release/

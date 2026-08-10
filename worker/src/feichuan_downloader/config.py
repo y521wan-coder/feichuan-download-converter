@@ -12,8 +12,8 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 
-APP_NAME = "飞船下载工具"
-VERSION = "0.3.9"
+APP_NAME = "飞船下载转换工具"
+VERSION = "1.0"
 PRODUCT_KEY = "feichuan_download_tool"
 UPDATE_PLATFORM = "windows"
 UPDATE_CHANNEL = "stable"

@@ -6,6 +6,15 @@ namespace AccessibleVideoToText.Tests;
 public sealed class ClipboardBatchAnalyzerTests
 {
     [TestMethod]
+    public void FormatRouter_PrefersRealFileDropThenFallsBackToText()
+    {
+        Assert.AreEqual(ClipboardPayloadKind.FileDrop, ClipboardFormatRouter.Choose(true, true));
+        Assert.AreEqual(ClipboardPayloadKind.FileDrop, ClipboardFormatRouter.Choose(true, false));
+        Assert.AreEqual(ClipboardPayloadKind.Text, ClipboardFormatRouter.Choose(false, true));
+        Assert.AreEqual(ClipboardPayloadKind.None, ClipboardFormatRouter.Choose(false, false));
+    }
+
+    [TestMethod]
     public void Analyze_PreservesClipboardOrderAndClassifiesFiles()
     {
         var inspector = new FakePathInspector(
@@ -96,4 +105,3 @@ public sealed class ClipboardBatchAnalyzerTests
         }
     }
 }
-

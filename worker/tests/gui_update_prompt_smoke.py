@@ -19,7 +19,7 @@ os.environ["FEICHUAN_SOFTWARE_UPDATE_ENDPOINT"] = ""
 _SETTINGS_ROOT = tempfile.TemporaryDirectory(prefix="feichuan-gui-update-settings-")
 _SETTINGS_PATH = Path(_SETTINGS_ROOT.name) / "settings.json"
 _SETTINGS_PATH.write_text(
-    json.dumps({"usage_guide_seen_versions": ["0.3.9"]}, ensure_ascii=False),
+    json.dumps({"usage_guide_seen_versions": ["1.0"]}, ensure_ascii=False),
     encoding="utf-8",
 )
 os.environ["FEICHUAN_SETTINGS_PATH"] = str(_SETTINGS_PATH)

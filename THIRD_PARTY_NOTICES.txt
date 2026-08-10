@@ -1,0 +1,67 @@
+飞船下载转换工具 1.0 第三方组件声明
+
+本文件记录安装包直接携带或运行时直接使用的主要第三方组件。许可证全文位于
+安装目录 licenses 文件夹。版本和二进制 SHA-256 另见安装目录“版本与校验.txt”。
+
+1. yt-dlp
+   项目：https://github.com/yt-dlp/yt-dlp
+   固定版本：2026.07.04，Windows 官方发布可执行文件
+   许可证：The Unlicense
+   用途：外置通用下载核心。
+
+2. FFmpeg / ffprobe
+   上游：https://ffmpeg.org/ 与 https://github.com/FFmpeg/FFmpeg
+   Windows 构建来源：https://github.com/BtbN/FFmpeg-Builds
+   固定构建：n8.1.2-22-g94138f6973-20260718
+   许可证边界：启用 --enable-version3，未启用 --enable-gpl 或 --enable-nonfree，
+   按 GNU LGPL version 3 分发。
+
+3. Requests
+   项目：https://requests.readthedocs.io/
+   固定版本：2.33.1
+   许可证：Apache License 2.0
+   用途：Python 工作进程 HTTP 客户端。
+
+4. websocket-client
+   项目：https://github.com/websocket-client/websocket-client
+   固定版本：1.9.0
+   许可证：Apache License 2.0
+   用途：抖音专用 Chrome DevTools WebSocket 客户端。
+
+5. PyInstaller
+   项目：https://pyinstaller.org/
+   固定版本：6.21.0
+   许可证：GPL-2.0-or-later，附允许分发生成程序的特殊例外。
+   用途：仅用于生成 feichuan-worker.exe；不作为运行时独立工具分发。
+
+6. FFMpegCore
+   项目：https://github.com/rosenbjerg/FFMpegCore
+   固定版本：5.4.0
+   许可证：MIT
+   用途：.NET 媒体探测和转换调用封装。
+
+7. TencentCloudSDK.Asr
+   项目：https://github.com/TencentCloud/tencentcloud-sdk-dotnet
+   固定版本：3.0.1442
+   许可证：Apache License 2.0
+   用途：腾讯云录音文件识别 API。
+
+8. Tencent.QCloud.Cos.Sdk
+   项目：https://github.com/tencentyun/qcloud-sdk-dotnet
+   固定版本：5.4.51
+   许可证：MIT
+   用途：用户自有腾讯云 COS 临时对象上传和删除。
+
+9. .NET Desktop Runtime components
+   项目：https://github.com/dotnet/runtime
+   固定 SDK：10.0.302，自包含 win-x64 发布
+   许可证：MIT 及随组件提供的第三方声明
+   用途：WinForms 主程序运行时。
+
+开源参考边界
+
+- jiji262/douyin-downloader、putyy/res-downloader 仅作为设计与行为参考；未复制其
+  EXE、证书或私钥。
+- StreamJsonRpc 仅做过开源复用评估，最终未引入运行时依赖。
+- 本地候选安装包当前没有 Authenticode 代码签名，Windows 可能显示“未知发布者”。
+- 本次只生成本地测试候选，不发布到 stable 更新服务器。

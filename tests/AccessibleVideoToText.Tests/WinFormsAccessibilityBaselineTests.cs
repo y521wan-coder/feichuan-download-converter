@@ -1,5 +1,8 @@
 using AccessibleVideoToText.App;
 using AccessibleVideoToText.Core;
+using System.Reflection;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AccessibleVideoToText.Tests;
 
@@ -12,11 +15,33 @@ public sealed class WinFormsAccessibilityBaselineTests
         RunInSta(() =>
         {
             using var form = new MainForm();
-            Assert.AreEqual("无障碍视频转文字", form.Text);
+            Assert.AreEqual("飞船下载转换工具", form.Text);
             Assert.AreEqual(AutoScaleMode.Dpi, form.AutoScaleMode);
             Assert.IsTrue(form.KeyPreview);
 
             var controls = Descendants(form).ToArray();
+            var linkInput = controls.OfType<TextBox>().Single(textBox =>
+                textBox.AccessibleName == "下载链接或平台分享文本");
+            Assert.AreEqual(0, linkInput.TabIndex);
+            var mode = controls.OfType<ComboBox>().Single();
+            Assert.AreEqual(ComboBoxStyle.DropDownList, mode.DropDownStyle);
+            Assert.AreEqual(1, mode.TabIndex);
+            CollectionAssert.AreEqual(
+                new[] { "只下载", "下载后转换为 MP3", "下载、转换 MP3 并生成 TXT" },
+                mode.Items.Cast<string>().ToArray());
+            Assert.AreEqual(0, mode.SelectedIndex);
+            mode.SelectedIndex = 2;
+            var resetMode = typeof(MainForm).GetMethod(
+                "ResetProcessingMode",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(resetMode);
+            resetMode.Invoke(form, null);
+            Assert.AreEqual(0, mode.SelectedIndex);
+
+            var tabs = controls.OfType<TabControl>().Single();
+            Assert.AreEqual(2, tabs.TabPages.Count);
+            Assert.AreEqual("任务队列", tabs.TabPages[0].Text);
+            Assert.AreEqual("状态与日志", tabs.TabPages[1].Text);
             var queue = controls.OfType<ListView>().Single();
             Assert.AreEqual(View.Details, queue.View);
             Assert.IsFalse(queue.OwnerDraw);
@@ -26,7 +51,7 @@ public sealed class WinFormsAccessibilityBaselineTests
             var progress = controls.OfType<ProgressBar>().Single();
             Assert.AreEqual("当前任务进度", progress.AccessibleName);
             var results = controls.OfType<TextBox>().Single(textBox => textBox.Multiline && textBox.ReadOnly);
-            Assert.AreEqual("本批结果", results.AccessibleName);
+            Assert.AreEqual("状态与日志", results.AccessibleName);
 
             foreach (var button in controls.OfType<Button>())
             {
@@ -55,8 +80,12 @@ public sealed class WinFormsAccessibilityBaselineTests
 
             using var trayExit = new TrayExitDialog();
             Assert.IsNotNull(trayExit.AcceptButton);
-            Assert.AreEqual("返回继续", ((Button)trayExit.AcceptButton).Text);
-            Assert.AreSame(trayExit.AcceptButton, trayExit.CancelButton);
+            Assert.AreEqual("转入托盘继续（默认）", ((Button)trayExit.AcceptButton).Text);
+            Assert.IsNotNull(trayExit.CancelButton);
+            Assert.AreEqual("返回软件", ((Button)trayExit.CancelButton).Text);
+            CollectionAssert.AreEquivalent(
+                new[] { "转入托盘继续（默认）", "取消任务并退出", "返回软件" },
+                Descendants(trayExit).OfType<Button>().Select(button => button.Text).ToArray());
         });
     }
 
@@ -81,6 +110,103 @@ public sealed class WinFormsAccessibilityBaselineTests
                 checkBox.Text.Contains("费用", StringComparison.Ordinal)));
             Assert.IsTrue(controls.All(control => control.GetType() != typeof(UserControl)), "云端配置必须使用标准 WinForms 控件。 ");
         });
+    }
+
+    [TestMethod]
+    public void HelpDialog_UsesStandardReadOnlyTextAndSafeCloseButton()
+    {
+        RunInSta(() =>
+        {
+            using var dialog = new HelpDialog("使用说明测试");
+            Assert.AreEqual(AutoScaleMode.Dpi, dialog.AutoScaleMode);
+            var controls = Descendants(dialog).ToArray();
+            var content = controls.OfType<TextBox>().Single();
+            Assert.IsTrue(content.Multiline);
+            Assert.IsTrue(content.ReadOnly);
+            Assert.AreEqual("使用说明正文", content.AccessibleName);
+            Assert.IsNotNull(dialog.AcceptButton);
+            Assert.AreEqual("关闭", ((Button)dialog.AcceptButton).Text);
+            Assert.AreSame(dialog.AcceptButton, dialog.CancelButton);
+        });
+    }
+
+    [TestMethod]
+    public void CompletedState_DisablesCancelAndDoesNotBlockIdleClose()
+    {
+        RunInSta(() =>
+        {
+            using var form = new MainForm();
+            var processing = typeof(MainForm).GetProperty(
+                "IsProcessing",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var previousFinished = typeof(MainForm).GetField(
+                "previousBatchFinished",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var updateButtons = typeof(MainForm).GetMethod(
+                "UpdateButtons",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var handleClosing = typeof(MainForm).GetMethod(
+                "HandleFormClosing",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(processing);
+            Assert.IsNotNull(previousFinished);
+            Assert.IsNotNull(updateButtons);
+            Assert.IsNotNull(handleClosing);
+
+            processing.SetValue(form, false);
+            previousFinished.SetValue(form, true);
+            updateButtons.Invoke(form, null);
+            var cancel = Descendants(form).OfType<Button>().Single(button => button.Text.Contains("取消"));
+            Assert.IsFalse(cancel.Enabled, "任务结束后取消按钮不得继续处于阻塞状态。 ");
+
+            var closing = new FormClosingEventArgs(CloseReason.UserClosing, cancel: false);
+            handleClosing.Invoke(form, [form, closing]);
+            Assert.IsFalse(closing.Cancel, "空闲或已完成状态下 Alt+F4/关闭必须直接退出。 ");
+        });
+    }
+
+    [TestMethod]
+    public void ProductAssemblyVersions_AreFixedAtOnePointZero()
+    {
+        var assembly = typeof(MainForm).Assembly;
+        Assert.AreEqual(new Version(1, 0, 0, 0), assembly.GetName().Version);
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+        Assert.IsNotNull(informational);
+        Assert.AreEqual("1.0", informational.InformationalVersion);
+    }
+
+    [TestMethod]
+    public void InstalledHelpSource_IsUtf8BomWithCrLfAndRequiredSections()
+    {
+        var current = new DirectoryInfo(Environment.CurrentDirectory);
+        string? path = null;
+        while (current is not null)
+        {
+            var candidate = Path.Combine(current.FullName, "docs", "release", "使用说明.txt");
+            if (File.Exists(candidate))
+            {
+                path = candidate;
+                break;
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.IsNotNull(path);
+        var bytes = File.ReadAllBytes(path);
+        Assert.IsTrue(bytes.Length > 3);
+        CollectionAssert.AreEqual(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        var text = Encoding.UTF8.GetString(bytes);
+        StringAssert.Contains(text, "\r\n");
+        Assert.IsFalse(Regex.IsMatch(text, "(?<!\\r)\\n"));
+        foreach (var required in new[]
+                 {
+                     "Ctrl+V", "只下载", "下载后转换为 MP3", "下载、转换 MP3 并生成 TXT",
+                     "抖音专用登录", "DPAPI CurrentUser", "每月 10 小时", "COS"
+                 })
+        {
+            StringAssert.Contains(text, required);
+        }
     }
 
     private static IEnumerable<Control> Descendants(Control root)
@@ -120,7 +246,7 @@ public sealed class WinFormsAccessibilityBaselineTests
         thread.Join();
         if (exception is not null)
         {
-            throw new AssertFailedException("STA 无障碍基线检查失败。", exception);
+            throw new AssertFailedException($"STA 无障碍基线检查失败：{exception.Message}", exception);
         }
     }
 }

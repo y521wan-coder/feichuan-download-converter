@@ -4,7 +4,7 @@
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>AccessibleVideoToText.App</AssemblyName>
+    <AssemblyName>飞船下载转换工具</AssemblyName>
     <RootNamespace>AccessibleVideoToText.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -17,5 +17,7 @@
     <ProjectReference Include="..\AccessibleVideoToText.Core\AccessibleVideoToText.Core.csproj" />
     <ProjectReference Include="..\AccessibleVideoToText.Infrastructure\AccessibleVideoToText.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\docs\release\使用说明.txt" Link="使用说明.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
-

@@ -138,7 +138,8 @@ public sealed record AppSettings(
     int Mp3BitrateKbps = 192,
     string? CosBucket = null,
     string CosRegion = "ap-shanghai",
-    string OutputPreference = "source-directory");
+    string OutputPreference = "source-directory",
+    bool HasShownVersion1Help = false);
 
 public sealed class CloudCredentials
 {

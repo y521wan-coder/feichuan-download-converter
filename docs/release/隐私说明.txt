@@ -1,12 +1,11 @@
-无障碍视频转文字测试候选版隐私说明
+飞船下载转换工具 1.0 隐私说明
 
-软件没有开发者服务器、账号、登录、遥测、广告、崩溃上传或自动更新。
+本地媒体只在本机探测和转换，源文件不会删除、移动或覆盖。
 
-本地源媒体只读，软件不移动、覆盖或删除源文件。程序设置、DPAPI 加密凭据、用量估算、待恢复任务和运行日志位于：
-%LOCALAPPDATA%\AccessibleVideoToText
+下载 worker 的 Cookie、签名 URL、媒体令牌和浏览器上下文只留在 Python 内存；WinForms 与 worker 的 JSON Lines 协议只传输非敏感元数据和临时操作 ID。
 
-云端转文字由用户自己的腾讯云账号处理。软件只把随机 GUID 命名的临时音频上传到上海区域的应用专用私有 COS 桶，调用常规 16k_zh 录音文件识别；不上传原始文件名。成功或最终失败后立即删除对象，专用前缀另有 1 天生命周期兜底。
+选择生成 TXT 时，软件会把临时音频上传到您自己的腾讯云私有 COS，并调用普通录音文件识别。对象在成功或最终失败后请求删除；删除失败时保留待恢复记录，专用前缀另设 1 天生命周期与未完成分块清理。COS 与 ASR 可能产生费用，提交前会单独确认。
 
-日志不记录 SecretId、SecretKey、签名 URL、完整本地路径或识别正文。凭据使用 Windows DPAPI CurrentUser 加密，不能跨电脑复制使用。
+日志不记录 SecretId、SecretKey、Cookie、授权头、签名 URL、完整本地路径、媒体令牌或识别正文。腾讯云凭据使用 Windows DPAPI CurrentUser 加密保存在 %LOCALAPPDATA%\AccessibleVideoToText，不能跨 Windows 用户或电脑复制使用。
 
-腾讯云 ASR、COS 存储、请求和生命周期删除可能产生费用；实际额度和费用以腾讯云控制台为准。
+软件继续兼容 %LOCALAPPDATA%\FeichuanDownloader 与 %LOCALAPPDATA%\AccessibleVideoToText，不自动迁移、解密或导出旧数据。
