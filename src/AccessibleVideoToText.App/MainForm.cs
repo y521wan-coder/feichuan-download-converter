@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using AccessibleVideoToText.Core;
 using AccessibleVideoToText.Infrastructure;
+using System.Windows.Forms.Automation;
 
 namespace AccessibleVideoToText.App;
 
@@ -42,8 +43,21 @@ public sealed class MainForm : Form
     private bool stopBatchRequested;
     private bool exitRequested;
     private bool cloudTaskAlreadySubmitted;
-    private bool IsProcessing { get; set; }
+    private bool isProcessing;
+    private bool IsProcessing
+    {
+        get => isProcessing;
+        set
+        {
+            isProcessing = value;
+            UpdateProgressWindowTitle();
+        }
+    }
     private bool previousBatchFinished;
+    private string currentTaskActivity = "当前没有进行中的任务";
+    private int? currentTaskPercentage;
+    private string? lastProgressAnnouncement;
+    private int progressAnnouncementRequestCount;
 
     public MainForm()
     {
@@ -103,6 +117,12 @@ public sealed class MainForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (IsProcessing && IsPhysicalNumpad8(msg, keyData))
+        {
+            AnnounceCurrentTaskProgress();
+            return true;
+        }
+
         if (keyData == (Keys.Control | Keys.V))
         {
             PasteClipboardContent();
@@ -128,6 +148,81 @@ public sealed class MainForm : Form
         }
 
         return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    private static bool IsPhysicalNumpad8(Message message, Keys keyData)
+    {
+        if ((keyData & Keys.Modifiers) != Keys.None)
+        {
+            return false;
+        }
+
+        var keyCode = keyData & Keys.KeyCode;
+        if (keyCode == Keys.NumPad8)
+        {
+            return true;
+        }
+
+        // Num Lock 关闭时，物理小键盘 8 会作为非扩展的 VK_UP 到达。
+        // 独立方向键上是扩展键，不能被本快捷键误拦截。
+        var keyBits = message.LParam.ToInt64();
+        var scanCode = (keyBits >> 16) & 0xff;
+        var isExtended = ((keyBits >> 24) & 1) != 0;
+        return keyCode == Keys.Up && scanCode == 0x48 && !isExtended;
+    }
+
+    private void AnnounceCurrentTaskProgress()
+    {
+        var activity = string.IsNullOrWhiteSpace(currentTaskActivity)
+            ? "当前任务正在处理"
+            : currentTaskActivity.Trim().TrimEnd('。', '！', '；');
+        var announcement = currentTaskPercentage is int percentage
+            ? $"{activity}，进度 {Math.Clamp(percentage, 0, 100)}%。"
+            : $"{activity}，暂时没有可用百分比。";
+
+        lastProgressAnnouncement = announcement;
+        progressAnnouncementRequestCount++;
+        var raised = statusLabel.AccessibilityObject.RaiseAutomationNotification(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.ImportantMostRecent,
+            announcement);
+        if (!raised)
+        {
+            statusLabel.AccessibleDescription = announcement;
+            AccessibilityNotifyClients(AccessibleEvents.DescriptionChange, -1);
+        }
+    }
+
+    private void SetCurrentTaskProgress(string activity, int? percentage)
+    {
+        if (!string.IsNullOrWhiteSpace(activity))
+        {
+            currentTaskActivity = activity.Trim();
+        }
+
+        currentTaskPercentage = percentage is null ? null : Math.Clamp(percentage.Value, 0, 100);
+        UpdateProgressWindowTitle();
+    }
+
+    private void UpdateProgressWindowTitle()
+    {
+        const string productName = "飞船下载转换工具";
+        if (!IsProcessing)
+        {
+            Text = productName;
+            AccessibleName = productName + "主窗口";
+            return;
+        }
+
+        // 争渡会先截获小键盘 8 并朗读当前窗口，应用收不到该按键。
+        // 因此把最近的确定进度同步到窗口标题，让它朗读的当前窗口信息
+        // 本身就包含百分比；未截获按键的读屏软件仍走 UIA 通知路径。
+        var percentage = currentTaskPercentage ?? (progressBar.Value > 0 ? progressBar.Value : null);
+        var progressText = percentage is int value
+            ? $"当前任务进度 {Math.Clamp(value, 0, 100)}%"
+            : "当前任务正在处理，暂时没有可用百分比";
+        Text = $"{productName}，{progressText}";
+        AccessibleName = Text + "，主窗口";
     }
 
     private MenuStrip BuildMenu()
@@ -549,6 +644,7 @@ public sealed class MainForm : Form
         batchCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         UpdateButtons();
         UpdateTrayStatus("正在下载");
+        SetCurrentTaskProgress("正在启动下载工作进程并扫描链接", null);
         ReportStatus("正在启动下载工作进程并扫描链接。", false);
         try
         {
@@ -625,6 +721,7 @@ public sealed class MainForm : Form
             ResetProcessingMode();
             UpdateButtons();
             UpdateTrayStatus("空闲");
+            SetCurrentTaskProgress("下载任务已经结束", null);
             batchCompletion?.TrySetResult();
         }
 
@@ -1144,6 +1241,16 @@ public sealed class MainForm : Form
             if (!string.IsNullOrWhiteSpace(line))
             {
                 resultText.AppendText(Environment.NewLine + line);
+                if (line.StartsWith("正在下载抖音媒体", StringComparison.Ordinal))
+                {
+                    SetCurrentTaskProgress(line, 0);
+                }
+                else if (
+                    line.Contains("合并音视频", StringComparison.Ordinal) ||
+                    line.StartsWith("首次音视频合并未成功", StringComparison.Ordinal))
+                {
+                    SetCurrentTaskProgress(line, null);
+                }
             }
 
             return;
@@ -1160,12 +1267,14 @@ public sealed class MainForm : Form
         var status = message.Payload.TryGetProperty("message", out var messageElement)
             ? messageElement.GetString() ?? string.Empty
             : string.Empty;
+        int? currentPercentage = null;
         if (message.Payload.TryGetProperty("overall_percent", out var percentElement) &&
             percentElement.ValueKind == System.Text.Json.JsonValueKind.Number &&
             percentElement.TryGetDouble(out var percent))
         {
             progressBar.Value = Math.Clamp((int)Math.Round(percent), 0, 100);
             progressBar.AccessibleDescription = $"下载任务进度 {progressBar.Value}%。";
+            currentPercentage = progressBar.Value;
         }
 
         var current = message.Payload.TryGetProperty("current", out var currentElement)
@@ -1177,6 +1286,7 @@ public sealed class MainForm : Form
         var summary = string.IsNullOrWhiteSpace(status)
             ? total > 0 ? $"下载阶段 {stage}，当前 {current}/{total}。" : $"下载阶段 {stage}。"
             : status;
+        SetCurrentTaskProgress(summary, currentPercentage);
         statusLabel.Text = $"状态：{summary}";
         statusLabel.AccessibleDescription = statusLabel.Text;
     }
@@ -1384,6 +1494,7 @@ public sealed class MainForm : Form
                 UpdateQueueRow(item);
                 progressBar.Value = 0;
                 progressBar.AccessibleDescription = $"{item.FileName}，探测中，进度 0%。";
+                SetCurrentTaskProgress("正在检查媒体格式和音轨", null);
                 ReportStatus($"第 {processedCount + 1} 项，共 {scopedItems.Length} 项：{item.FileName}，开始探测。", false);
 
                 var progress = new Progress<int>(percentage =>
@@ -1392,6 +1503,7 @@ public sealed class MainForm : Form
                     item.StepDetail = $"正在转换第一条音轨，{percentage}%";
                     progressBar.Value = Math.Clamp(percentage, 0, 100);
                     progressBar.AccessibleDescription = $"{item.FileName}，转换 MP3，{percentage}%。";
+                    SetCurrentTaskProgress("正在转换 MP3", progressBar.Value);
                     statusLabel.Text = $"状态：第 {processedCount + 1} 项，共 {scopedItems.Length} 项，正在转换 {item.FileName}，{percentage}%。";
                     statusLabel.AccessibleDescription = statusLabel.Text;
                     UpdateQueueRow(item, notifyAccessibility: false);
@@ -1468,6 +1580,7 @@ public sealed class MainForm : Form
             sleepInhibitor = null;
             progressBar.Value = 0;
             progressBar.AccessibleDescription = "批次已结束，当前没有进行中的确定进度。";
+            SetCurrentTaskProgress("当前任务已经结束", null);
             ResetProcessingMode();
             UpdateButtons();
 
@@ -1630,11 +1743,13 @@ public sealed class MainForm : Form
                     {
                         progressBar.Value = Math.Clamp(update.Percentage.Value, 0, 100);
                         progressBar.AccessibleDescription = $"{item.FileName}，{update.Message}，{update.Percentage}%。";
+                        SetCurrentTaskProgress(update.Message, progressBar.Value);
                     }
                     else
                     {
                         progressBar.Value = 0;
                         progressBar.AccessibleDescription = $"{item.FileName}，{update.Message}；该阶段没有真实百分比。";
+                        SetCurrentTaskProgress(update.Message, null);
                     }
 
                     statusLabel.Text = $"状态：第 {itemNumber} 项，共 {scopedItems.Length} 项，{item.FileName}，{item.StepDetail}。";
@@ -1765,6 +1880,7 @@ public sealed class MainForm : Form
             sleepInhibitor = null;
             progressBar.Value = 0;
             progressBar.AccessibleDescription = "批次已结束，当前没有进行中的确定进度。";
+            SetCurrentTaskProgress("当前任务已经结束", null);
             ResetProcessingMode();
             UpdateButtons();
 
@@ -1987,6 +2103,7 @@ public sealed class MainForm : Form
                         statusLabel.Text = $"状态：恢复任务 {Path.GetFileName(job.OutputPath)}，{update.Message}。";
                         statusLabel.AccessibleDescription = statusLabel.Text;
                         progressBar.Value = update.Percentage is null ? 0 : Math.Clamp(update.Percentage.Value, 0, 100);
+                        SetCurrentTaskProgress(update.Message, update.Percentage);
                     });
                     await processor.ResumeAsync(job, progress, currentItemCancellation.Token);
                     succeeded++;
@@ -2031,6 +2148,7 @@ public sealed class MainForm : Form
             sleepInhibitor?.Dispose();
             sleepInhibitor = null;
             progressBar.Value = 0;
+            SetCurrentTaskProgress("当前任务已经结束", null);
             ResetProcessingMode();
             UpdateButtons();
             UpdateTrayStatus("空闲");

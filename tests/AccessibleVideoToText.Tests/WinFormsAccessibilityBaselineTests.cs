@@ -166,6 +166,88 @@ public sealed class WinFormsAccessibilityBaselineTests
     }
 
     [TestMethod]
+    public void NumpadEight_AnnouncesOneCurrentProgressSnapshotPerPress()
+    {
+        RunInSta(() =>
+        {
+            using var form = new MainForm();
+            form.CreateControl();
+            var processing = typeof(MainForm).GetProperty(
+                "IsProcessing",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var activity = typeof(MainForm).GetField(
+                "currentTaskActivity",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var percentage = typeof(MainForm).GetField(
+                "currentTaskPercentage",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var announcement = typeof(MainForm).GetField(
+                "lastProgressAnnouncement",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var requestCount = typeof(MainForm).GetField(
+                "progressAnnouncementRequestCount",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var processKey = typeof(MainForm).GetMethod(
+                "ProcessCmdKey",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var setProgress = typeof(MainForm).GetMethod(
+                "SetCurrentTaskProgress",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(processing);
+            Assert.IsNotNull(activity);
+            Assert.IsNotNull(percentage);
+            Assert.IsNotNull(announcement);
+            Assert.IsNotNull(requestCount);
+            Assert.IsNotNull(processKey);
+            Assert.IsNotNull(setProgress);
+
+            processing.SetValue(form, true);
+            setProgress.Invoke(form, ["正在下载视频", 42]);
+            Assert.AreEqual("飞船下载转换工具，当前任务进度 42%", form.Text);
+            Assert.AreEqual("飞船下载转换工具，当前任务进度 42%，主窗口", form.AccessibleName);
+            var numpadMessage = Message.Create(
+                form.Handle,
+                0x0100,
+                (IntPtr)(int)Keys.NumPad8,
+                (IntPtr)(0x48 << 16));
+            var handled = (bool)processKey.Invoke(form, [numpadMessage, Keys.NumPad8])!;
+            Assert.IsTrue(handled);
+            Assert.AreEqual(1, requestCount.GetValue(form));
+            Assert.AreEqual("正在下载视频，进度 42%。", announcement.GetValue(form));
+
+            // Num Lock 关闭时同一物理键表现为非扩展 VK_UP，仍应播报。
+            percentage.SetValue(form, null);
+            activity.SetValue(form, "正在合并音视频");
+            var numLockOffMessage = Message.Create(
+                form.Handle,
+                0x0100,
+                (IntPtr)(int)Keys.Up,
+                (IntPtr)(0x48 << 16));
+            handled = (bool)processKey.Invoke(form, [numLockOffMessage, Keys.Up])!;
+            Assert.IsTrue(handled);
+            Assert.AreEqual(2, requestCount.GetValue(form));
+            Assert.AreEqual(
+                "正在合并音视频，暂时没有可用百分比。",
+                announcement.GetValue(form));
+
+            // 独立方向键上带扩展位，不能被误认为小键盘 8。
+            var arrowMessage = Message.Create(
+                form.Handle,
+                0x0100,
+                (IntPtr)(int)Keys.Up,
+                (IntPtr)((0x48 << 16) | (1 << 24)));
+            processKey.Invoke(form, [arrowMessage, Keys.Up]);
+            Assert.AreEqual(2, requestCount.GetValue(form));
+
+            processing.SetValue(form, false);
+            processKey.Invoke(form, [numpadMessage, Keys.NumPad8]);
+            Assert.AreEqual(2, requestCount.GetValue(form));
+            Assert.AreEqual("飞船下载转换工具", form.Text);
+            Assert.AreEqual("飞船下载转换工具主窗口", form.AccessibleName);
+        });
+    }
+
+    [TestMethod]
     public void ProductAssemblyVersions_AreFixedAtOnePointZero()
     {
         var assembly = typeof(MainForm).Assembly;
@@ -202,7 +284,7 @@ public sealed class WinFormsAccessibilityBaselineTests
         foreach (var required in new[]
                  {
                      "Ctrl+V", "只下载", "下载后转换为 MP3", "下载、转换 MP3 并生成 TXT",
-                     "抖音专用登录", "DPAPI CurrentUser", "每月 10 小时", "COS"
+                     "抖音专用登录", "小键盘 8", "DPAPI CurrentUser", "每月 10 小时", "COS"
                  })
         {
             StringAssert.Contains(text, required);

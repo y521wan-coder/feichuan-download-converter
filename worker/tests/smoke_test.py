@@ -143,6 +143,9 @@ def main() -> None:
         )
         is None
     )
+    _merge_source = inspect.getsource(DouyinCapture._merge_audio_video)
+    assert "stdin=subprocess.DEVNULL" in _merge_source
+    assert "movflags" not in _merge_source
     if _ffmpeg.exists():
         with tempfile.TemporaryDirectory() as _fd:
             _m = Path(_fd)
@@ -214,6 +217,7 @@ def main() -> None:
     #    应自动跳过占位、配对合并为音画齐全文件。
     if _ffmpeg.exists():
         _old_dl2 = inspect.getattr_static(DouyinCapture, "_download_http")
+        _old_merge2 = inspect.getattr_static(DouyinCapture, "_merge_audio_video")
         _old_download_dir2 = os.environ.get("FEICHUAN_DOWNLOAD_DIR")
         try:
             with tempfile.TemporaryDirectory() as _fd2:
@@ -252,6 +256,14 @@ def main() -> None:
                     partial.write_bytes(source.read_bytes())
 
                 DouyinCapture._download_http = staticmethod(_fake_download_http2)
+                _merge_attempts = 0
+                def _fail_first_merge(video, audio, destination):
+                    nonlocal _merge_attempts
+                    _merge_attempts += 1
+                    if _merge_attempts == 1:
+                        return False
+                    return _old_merge2.__func__(video, audio, destination)
+                DouyinCapture._merge_audio_video = staticmethod(_fail_first_merge)
                 try:
                     with tempfile.TemporaryDirectory() as _dd2:
                         os.environ["FEICHUAN_DOWNLOAD_DIR"] = _dd2
@@ -270,14 +282,17 @@ def main() -> None:
                         merged_types = DouyinCapture._probe_stream_types(result.path)
                         assert {"video", "audio"}.issubset(merged_types), merged_types
                         assert result.path.exists() and result.path.stat().st_size > 0
+                        assert _merge_attempts == 2, _merge_attempts
                 finally:
                     setattr(DouyinCapture, "_download_http", _old_dl2)
+                    setattr(DouyinCapture, "_merge_audio_video", _old_merge2)
                     if _old_download_dir2 is None:
                         os.environ.pop("FEICHUAN_DOWNLOAD_DIR", None)
                     else:
                         os.environ["FEICHUAN_DOWNLOAD_DIR"] = _old_download_dir2
         finally:
             setattr(DouyinCapture, "_download_http", _old_dl2)
+            setattr(DouyinCapture, "_merge_audio_video", _old_merge2)
             if _old_download_dir2 is None:
                 os.environ.pop("FEICHUAN_DOWNLOAD_DIR", None)
             else:

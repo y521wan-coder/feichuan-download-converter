@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -66,6 +67,7 @@ class DouyinCapture:
     def __init__(self, browser: Path | None = None, timeout: float = 45) -> None:
         self.browser = browser or find_browser()
         self.timeout = timeout
+        self._last_merge_error = ""
 
     def capture(
         self,
@@ -221,15 +223,10 @@ class DouyinCapture:
         return ordered, title
 
     @staticmethod
-    def _is_placeholder_video(path: Path) -> bool:
-        """Return True when ffprobe reports the clip is shorter than 5 seconds.
-
-        Douyin pages sometimes preload a ~2-second placeholder MP4 alongside
-        the real VOD.  The placeholder passes header/magic validation but is
-        not the content the user requested.
-        """
+    def _probe_duration(path: Path) -> float | None:
+        """Return the container duration without exposing media details."""
         if not FFPROBE_PATH.exists():
-            return False
+            return None
         try:
             completed = subprocess.run(
                 [
@@ -244,12 +241,23 @@ class DouyinCapture:
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             text = (completed.stdout or b"").decode("utf-8", errors="replace").strip()
-            if not text:
-                return False
+            if completed.returncode or not text:
+                return None
             duration = float(text.split("\n", 1)[0])
-            return duration < 5.0
+            return duration if duration > 0 else None
         except (subprocess.TimeoutExpired, OSError, ValueError):
-            return False
+            return None
+
+    @staticmethod
+    def _is_placeholder_video(path: Path) -> bool:
+        """Return True when ffprobe reports the clip is shorter than 5 seconds.
+
+        Douyin pages sometimes preload a ~2-second placeholder MP4 alongside
+        the real VOD.  The placeholder passes header/magic validation but is
+        not the content the user requested.
+        """
+        duration = DouyinCapture._probe_duration(path)
+        return duration is not None and duration < 5.0
 
     def _download_candidates(
         self,
@@ -265,87 +273,211 @@ class DouyinCapture:
         clean_title = sanitize_filename(title, fallback_title)
         errors: list[str] = []
         is_note = self._is_note_url(source_url)
-        ordered_candidates = self._ordered_candidates(candidates, source_url)
+        ordered_candidates = self._ordered_candidates(candidates, source_url)[:8]
         if is_note and not ordered_candidates:
             raise RuntimeError("未发现可下载的图文背景音频。")
-        video_partial: Path | None = None
-        audio_partial: Path | None = None
+        download_dir = get_download_dir()
+        final_video_target = self._next_available(download_dir / f"{clean_title}.mp4")
+        video_tracks: list[dict[str, Any]] = []
+        audio_tracks: list[dict[str, Any]] = []
         kept_partials: list[Path] = []
-        for index, candidate in enumerate(ordered_candidates[:8]):
+        tried_pairs: set[tuple[str, str]] = set()
+
+        base_headers = {
+            "User-Agent": _USER_AGENT,
+            "Referer": self._referer_for(source_url),
+            "Accept": "*/*",
+        }
+        if cookie_header:
+            base_headers["Cookie"] = cookie_header
+
+        estimated_sizes = [
+            self._probe_remote_size(candidate, base_headers, cancel_event)
+            for candidate in ordered_candidates
+        ]
+        aggregate_total = (
+            sum(estimated_sizes)
+            if estimated_sizes and all(size > 0 for size in estimated_sizes)
+            else 0
+        )
+        aggregate_completed = 0
+        last_reported = 0.0
+
+        def report_candidate_progress(candidate_index: int, value: float | None) -> None:
+            nonlocal last_reported
+            if on_progress is None:
+                return
+            if value is None:
+                on_progress(None)
+                return
+            size = estimated_sizes[candidate_index]
+            if aggregate_total > 0 and size > 0:
+                overall = (aggregate_completed + size * value / 100.0) * 100.0 / aggregate_total
+                last_reported = max(last_reported, min(99.0, overall))
+                on_progress(last_reported)
+            else:
+                on_progress(max(0.0, min(99.0, value)))
+
+        def download_candidate(
+            candidate: dict[str, Any],
+            partial: Path,
+            candidate_index: int,
+            *,
+            report_progress: bool = True,
+        ) -> tuple[set[str], float | None]:
+            media_url = candidate["url"]
+            callback = (
+                (lambda value: report_candidate_progress(candidate_index, value))
+                if report_progress
+                else None
+            )
+            if ".m3u8" in media_url.lower() or "mpegurl" in candidate.get("mime", ""):
+                self._download_hls(media_url, partial, base_headers, cancel_event)
+            else:
+                self._download_http(media_url, partial, base_headers, callback, cancel_event)
+            if not partial.exists() or partial.stat().st_size == 0:
+                raise RuntimeError("媒体文件为空。")
+            self._validate_media_file(partial)
+            duration = self._probe_duration(partial)
+            if self._is_placeholder_video(partial):
+                raise RuntimeError("候选视频时长过短，疑似占位片段。")
+            return self._probe_stream_types(partial), duration
+
+        def try_available_pairs() -> CaptureResult | None:
+            for video in video_tracks:
+                for audio in audio_tracks:
+                    pair_key = (str(video["path"]), str(audio["path"]))
+                    if pair_key in tried_pairs or not self._durations_compatible(
+                        video.get("duration"), audio.get("duration")
+                    ):
+                        continue
+                    tried_pairs.add(pair_key)
+                    self._emit("正在校验并合并音视频……", on_line)
+                    if on_progress:
+                        on_progress(None)
+                    if self._merge_completed(
+                        video["path"],
+                        audio["path"],
+                        final_video_target,
+                        kept_partials,
+                    ):
+                        return CaptureResult(path=final_video_target, title=clean_title)
+            return None
+
+        for index, candidate in enumerate(ordered_candidates):
             media_url = candidate["url"]
             suffix = self._candidate_suffix(candidate)
-            target = self._next_available(get_download_dir() / f"{clean_title}{suffix}")
+            target = (
+                self._next_available(download_dir / f"{clean_title}{suffix}")
+                if is_note
+                else final_video_target
+            )
             # 每个候选使用独立的临时文件名，避免视频轨与音频轨下载路径冲突。
             partial = target.with_name(f"{target.name}.cand{index + 1}.part")
-            headers = {
-                "User-Agent": _USER_AGENT,
-                "Referer": self._referer_for(source_url),
-                "Accept": "*/*",
-            }
-            if cookie_header:
-                headers["Cookie"] = cookie_header
             try:
                 if cancel_event and cancel_event.is_set():
                     raise RuntimeError("下载已取消。")
                 self._emit(f"正在下载抖音媒体（候选 {index + 1}）……", on_line)
-                if ".m3u8" in media_url.lower() or "mpegurl" in candidate.get("mime", ""):
-                    self._download_hls(media_url, partial, headers, cancel_event)
-                else:
-                    self._download_http(media_url, partial, headers, on_progress, cancel_event)
-                if not partial.exists() or partial.stat().st_size == 0:
-                    raise RuntimeError("媒体文件为空。")
-                self._validate_media_file(partial)
-                if self._is_placeholder_video(partial):
-                    raise RuntimeError("候选视频时长过短，疑似占位片段。")
+                stream_types, duration = download_candidate(candidate, partial, index)
             except Exception as exc:
                 errors.append(_safe_error(str(exc)))
                 self._safe_unlink(partial)
+                aggregate_completed += estimated_sizes[index]
                 continue
-            stream_types = self._probe_stream_types(partial)
-            is_video_kind = self._candidate_media_kind(candidate) == "video"
-            if is_note or not is_video_kind:
-                # 图文背景音频或非视频候选：保持原有行为直接保存。
+            aggregate_completed += estimated_sizes[index]
+            if is_note:
+                if "audio" not in stream_types:
+                    errors.append("图文候选不是有效的音频。")
+                    self._safe_unlink(partial)
+                    continue
                 os.replace(partial, target)
                 self._cleanup_partials(kept_partials)
                 return CaptureResult(path=target, title=clean_title)
             if {"video", "audio"}.issubset(stream_types):
                 # 候选本身音画齐全（如 HLS 合并结果）。
-                os.replace(partial, target)
+                os.replace(partial, final_video_target)
                 self._cleanup_partials(kept_partials)
-                return CaptureResult(path=target, title=clean_title)
+                return CaptureResult(path=final_video_target, title=clean_title)
             if "video" in stream_types:
-                # 纯视频轨：暂存，等待独立音频轨配对合并。
-                if video_partial is None:
-                    video_partial = partial
+                if len(video_tracks) < 3:
+                    video_tracks.append(
+                        {"path": partial, "candidate": candidate, "duration": duration, "index": index}
+                    )
                     kept_partials.append(partial)
                 else:
                     self._safe_unlink(partial)
-                if (
-                    audio_partial is not None
-                    and self._merge_completed(video_partial, audio_partial, target, kept_partials)
-                ):
-                    return CaptureResult(path=target, title=clean_title)
+                merged = try_available_pairs()
+                if merged is not None:
+                    return merged
                 continue
             if "audio" in stream_types:
-                # 独立音频轨（抖音常把音频流 Content-Type 标为 video/mp4，需按内容识别）。
-                if audio_partial is None:
-                    audio_partial = partial
+                if len(audio_tracks) < 3:
+                    audio_tracks.append(
+                        {"path": partial, "candidate": candidate, "duration": duration, "index": index}
+                    )
                     kept_partials.append(partial)
                 else:
                     self._safe_unlink(partial)
-                if (
-                    video_partial is not None
-                    and self._merge_completed(video_partial, audio_partial, target, kept_partials)
-                ):
-                    return CaptureResult(path=target, title=clean_title)
+                merged = try_available_pairs()
+                if merged is not None:
+                    return merged
                 continue
             errors.append("候选不是有效的音视频。")
             self._safe_unlink(partial)
+
+        # 长视频偶尔会得到可探测但不完整的分轨。首次封装全部失败后，
+        # 从头重新下载时长最接近的一组轨道，再做一次最终封装。
+        compatible_pairs = [
+            (video, audio)
+            for video in video_tracks
+            for audio in audio_tracks
+            if self._durations_compatible(video.get("duration"), audio.get("duration"))
+        ]
+        if compatible_pairs:
+            best_video, best_audio = min(
+                compatible_pairs,
+                key=lambda pair: self._duration_difference(
+                    pair[0].get("duration"), pair[1].get("duration")
+                ),
+            )
+            retry_video = final_video_target.with_name(f"{final_video_target.name}.retry-video.part")
+            retry_audio = final_video_target.with_name(f"{final_video_target.name}.retry-audio.part")
+            retry_paths = [retry_video, retry_audio]
+            try:
+                self._emit("首次音视频合并未成功，正在重新获取完整分轨……", on_line)
+                if on_progress:
+                    on_progress(None)
+                self._safe_unlink(retry_video)
+                self._safe_unlink(retry_audio)
+                video_types, video_duration = download_candidate(
+                    best_video["candidate"], retry_video, best_video["index"], report_progress=False
+                )
+                audio_types, audio_duration = download_candidate(
+                    best_audio["candidate"], retry_audio, best_audio["index"], report_progress=False
+                )
+                if (
+                    "video" in video_types
+                    and "audio" in audio_types
+                    and self._durations_compatible(video_duration, audio_duration)
+                ):
+                    kept_partials.extend(retry_paths)
+                    self._emit("正在校验并合并重新获取的音视频……", on_line)
+                    if self._merge_completed(
+                        retry_video, retry_audio, final_video_target, kept_partials
+                    ):
+                        return CaptureResult(path=final_video_target, title=clean_title)
+                errors.append("重新获取分轨后仍无法生成完整音视频。")
+            except Exception as exc:
+                errors.append(_safe_error(str(exc)))
+            finally:
+                self._safe_unlink(retry_video)
+                self._safe_unlink(retry_audio)
+
         self._cleanup_partials(kept_partials)
-        if video_partial is not None and audio_partial is None:
+        if video_tracks and not audio_tracks:
             errors.append("候选视频缺少音频轨，且未捕获到独立音频流。")
-        elif video_partial is not None and audio_partial is not None:
-            errors.append("已获取视频轨与音频轨，但音视频合并失败。")
+        elif video_tracks and audio_tracks:
+            errors.append(self._last_merge_error or "已获取视频轨与音频轨，但音视频合并失败。")
         raise RuntimeError("；".join(errors[-3:]) or "所有媒体候选均下载失败。")
 
     @staticmethod
@@ -455,6 +587,57 @@ class DouyinCapture:
         return ".mp4"
 
     @staticmethod
+    def _duration_difference(first: float | None, second: float | None) -> float:
+        if first is None or second is None:
+            return float("inf")
+        return abs(first - second)
+
+    @staticmethod
+    def _durations_compatible(first: float | None, second: float | None) -> bool:
+        if first is None or second is None:
+            return True
+        tolerance = max(3.0, min(10.0, max(first, second) * 0.002))
+        return abs(first - second) <= tolerance
+
+    @staticmethod
+    def _probe_remote_size(
+        candidate: dict[str, Any],
+        headers: dict[str, str],
+        cancel_event: Any = None,
+    ) -> int:
+        """Read only response headers so split-track progress can be aggregated."""
+        url = str(candidate.get("url") or "")
+        if not url or ".m3u8" in url.lower():
+            return 0
+        try:
+            host = (urlsplit(url).hostname or "").lower()
+            if host.endswith(".example.test"):
+                return max(0, int(candidate.get("content_length") or 0))
+        except (TypeError, ValueError):
+            return 0
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("下载已取消。")
+        probe_headers = dict(headers)
+        probe_headers["Range"] = "bytes=0-0"
+        try:
+            with requests.get(
+                url,
+                headers=probe_headers,
+                stream=True,
+                timeout=(8, 15),
+                proxies={"http": None, "https": None},
+            ) as response:
+                if response.status_code not in {200, 206}:
+                    return 0
+                content_range = response.headers.get("content-range", "")
+                match = re.search(r"/(\d+)\s*$", content_range)
+                if match:
+                    return max(0, int(match.group(1)))
+                return max(0, int(response.headers.get("content-length", "0") or 0))
+        except (OSError, ValueError, requests.RequestException):
+            return 0
+
+    @staticmethod
     def _referer_for(source_url: str) -> str:
         try:
             parts = urlsplit(source_url)
@@ -472,29 +655,76 @@ class DouyinCapture:
         on_progress: ProgressCallback | None,
         cancel_event: Any = None,
     ) -> None:
-        with requests.get(
-            url,
-            headers=headers,
-            stream=True,
-            timeout=(10, 60),
-            proxies={"http": None, "https": None},
-        ) as response:
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "").lower()
-            if content_type.startswith(("text/html", "text/plain", "image/")):
-                raise RuntimeError("媒体响应不是音视频内容。")
-            total = int(response.headers.get("content-length", "0") or 0)
-            received = 0
-            with partial.open("wb") as output:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if cancel_event and cancel_event.is_set():
-                        raise RuntimeError("下载已取消。")
-                    if not chunk:
-                        continue
-                    output.write(chunk)
-                    received += len(chunk)
-                    if on_progress and total:
-                        on_progress(min(99.0, received * 100.0 / total))
+        last_error = ""
+        for attempt in range(1, 4):
+            if cancel_event and cancel_event.is_set():
+                raise RuntimeError("下载已取消。")
+            existing = partial.stat().st_size if partial.exists() else 0
+            request_headers = dict(headers)
+            if existing:
+                request_headers["Range"] = f"bytes={existing}-"
+            try:
+                with requests.get(
+                    url,
+                    headers=request_headers,
+                    stream=True,
+                    timeout=(10, 60),
+                    proxies={"http": None, "https": None},
+                ) as response:
+                    if response.status_code == 416 and existing:
+                        if on_progress:
+                            on_progress(99.0)
+                        return
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type", "").lower()
+                    if content_type.startswith(("text/html", "text/plain", "image/")):
+                        raise RuntimeError("媒体响应不是音视频内容。")
+
+                    append = existing > 0 and response.status_code == 206
+                    if not append:
+                        existing = 0
+                    content_length = int(response.headers.get("content-length", "0") or 0)
+                    content_range = response.headers.get("content-range", "")
+                    range_match = re.search(r"/(\d+)\s*$", content_range)
+                    total = int(range_match.group(1)) if range_match else existing + content_length
+                    received_this_response = 0
+                    mode = "ab" if append else "wb"
+                    with partial.open(mode) as output:
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if cancel_event and cancel_event.is_set():
+                                raise RuntimeError("下载已取消。")
+                            if not chunk:
+                                continue
+                            output.write(chunk)
+                            received_this_response += len(chunk)
+                            if on_progress and total:
+                                on_progress(
+                                    min(99.0, (existing + received_this_response) * 100.0 / total)
+                                )
+                    final_size = partial.stat().st_size if partial.exists() else 0
+                    if content_length and received_this_response != content_length:
+                        last_error = "incomplete"
+                        if attempt < 3:
+                            continue
+                        break
+                    if total and final_size != total:
+                        last_error = "incomplete"
+                        if attempt < 3:
+                            continue
+                        break
+                    return
+            except RuntimeError:
+                raise
+            except (OSError, requests.RequestException, ValueError) as exc:
+                last_error = type(exc).__name__
+                if attempt >= 3:
+                    break
+                time.sleep(0.5 * attempt)
+        raise RuntimeError(
+            "媒体下载不完整，重试后仍失败。"
+            if last_error
+            else "媒体下载失败。"
+        )
 
     @staticmethod
     def _download_hls(
@@ -523,6 +753,7 @@ class DouyinCapture:
         ]
         process = subprocess.Popen(
             command,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -595,7 +826,21 @@ class DouyinCapture:
     def _merge_audio_video(video_path: Path, audio_path: Path, destination: Path) -> bool:
         """Mux a video track and a separate audio track into one playable file."""
         if not FFMPEG_PATH.exists():
-            return False
+            raise RuntimeError("缺少 FFmpeg，无法合并音视频。")
+        required_space = video_path.stat().st_size + audio_path.stat().st_size + 64 * 1024 * 1024
+        if shutil.disk_usage(destination.parent).free < required_space:
+            raise RuntimeError("目标磁盘可用空间不足，无法生成完整视频。")
+        # FFmpeg's faststart relocation can stall at EOF on this fixed Windows
+        # build when the output has a very long Unicode name.  Mux to a short,
+        # same-volume temporary name without faststart, then atomically rename.
+        # Local downloads do not need the moov atom relocated for HTTP startup.
+        mux_destination = destination.with_name(
+            f".feichuan-mux-{os.getpid()}-{threading.get_ident()}.mp4.part"
+        )
+        try:
+            mux_destination.unlink(missing_ok=True)
+        except OSError:
+            raise RuntimeError("无法准备音视频合并临时文件。")
         base = [
             str(FFMPEG_PATH),
             "-y",
@@ -605,34 +850,78 @@ class DouyinCapture:
             str(video_path),
             "-i",
             str(audio_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
         ]
+        # AAC compatibility conversion of a 90-minute stream can legitimately
+        # need more than two minutes.  The previous fixed 120-second limit
+        # killed a healthy attempt just before completion.
         strategies = [
-            base
-            + ["-c:v", "copy", "-c:a", "copy", "-shortest", "-movflags", "+faststart", "-f", "mp4", str(destination)],
-            base
-            + ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", "-f", "mp4", str(destination)],
+            (
+                base
+                + ["-c:v", "copy", "-c:a", "copy", "-shortest", "-f", "mp4", str(mux_destination)],
+                300,
+            ),
+            (
+                base
+                + ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-f", "mp4", str(mux_destination)],
+                1800,
+            ),
+            (
+                base
+                + [
+                "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                "-shortest", "-f", "mp4", str(mux_destination),
+                ],
+                1800,
+            ),
         ]
-        for command in strategies:
+        last_stderr = ""
+        for command, timeout_seconds in strategies:
+            mux_destination.unlink(missing_ok=True)
             try:
                 completed = subprocess.run(
                     command,
+                    stdin=subprocess.DEVNULL,
                     capture_output=True,
-                    timeout=120,
+                    timeout=timeout_seconds,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
-            except (OSError, subprocess.TimeoutExpired):
+            except subprocess.TimeoutExpired:
+                last_stderr = "timeout"
+                continue
+            except OSError:
+                last_stderr = "oserror"
                 continue
             if (
                 completed.returncode == 0
-                and destination.exists()
-                and destination.stat().st_size > 0
+                and mux_destination.exists()
+                and mux_destination.stat().st_size > 0
             ):
+                os.replace(mux_destination, destination)
                 return True
+            last_stderr = (completed.stderr or b"").decode("utf-8", errors="replace")
             try:
                 destination.unlink(missing_ok=True)
             except OSError:
                 pass
-        return False
+        lowered = last_stderr.lower()
+        if "no space left" in lowered:
+            raise RuntimeError("目标磁盘可用空间不足，无法生成完整视频。")
+        if "permission denied" in lowered or "access is denied" in lowered:
+            raise RuntimeError("目标目录拒绝写入，无法生成完整视频。")
+        if any(
+            marker in lowered
+            for marker in ("invalid data", "moov atom not found", "end of file", "corrupt", "truncated")
+        ):
+            raise RuntimeError("下载的音视频分轨不完整，无法安全合并。")
+        mux_destination.unlink(missing_ok=True)
+        if last_stderr == "timeout":
+            raise RuntimeError("音视频合并超时。")
+        raise RuntimeError("FFmpeg 无法封装这组音视频轨。")
 
     @staticmethod
     def _safe_unlink(path: Path) -> None:
@@ -654,12 +943,18 @@ class DouyinCapture:
         kept_partials: list[Path],
     ) -> bool:
         """Mux the kept video and audio tracks and publish the complete file."""
-        merged = target.with_name(target.name + ".merged.mp4")
+        merged = target.with_name(target.name + ".merged.part")
         try:
-            if not self._merge_audio_video(video_partial, audio_partial, merged):
+            try:
+                if not self._merge_audio_video(video_partial, audio_partial, merged):
+                    self._last_merge_error = "FFmpeg 无法封装这组音视频轨。"
+                    return False
+            except RuntimeError as exc:
+                self._last_merge_error = _safe_error(str(exc))
                 return False
             merged_types = self._probe_stream_types(merged)
             if not {"video", "audio"}.issubset(merged_types):
+                self._last_merge_error = "合并结果缺少视频轨或音频轨。"
                 return False
             os.replace(merged, target)
             self._cleanup_partials(kept_partials)
