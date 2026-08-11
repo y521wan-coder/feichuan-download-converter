@@ -27,10 +27,23 @@ public sealed class WinFormsAccessibilityBaselineTests
             Assert.AreEqual(ComboBoxStyle.DropDownList, mode.DropDownStyle);
             Assert.AreEqual(1, mode.TabIndex);
             CollectionAssert.AreEqual(
-                new[] { "只下载", "下载后转换为 MP3", "下载、转换 MP3 并生成 TXT" },
+                new[]
+                {
+                    "只下载",
+                    "下载后转换为 MP3",
+                    "下载、转换 MP3 并生成 TXT",
+                    "获取解析直连"
+                },
                 mode.Items.Cast<string>().ToArray());
             Assert.AreEqual(0, mode.SelectedIndex);
-            mode.SelectedIndex = 2;
+            mode.SelectedIndex = 3;
+            var enter = new KeyEventArgs(Keys.Enter);
+            var onKeyDown = typeof(Control).GetMethod(
+                "OnKeyDown",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(onKeyDown);
+            onKeyDown.Invoke(mode, [enter]);
+            Assert.IsTrue(enter.SuppressKeyPress);
             var resetMode = typeof(MainForm).GetMethod(
                 "ResetProcessingMode",
                 BindingFlags.Instance | BindingFlags.NonPublic);
@@ -284,6 +297,7 @@ public sealed class WinFormsAccessibilityBaselineTests
         foreach (var required in new[]
                  {
                      "Ctrl+V", "只下载", "下载后转换为 MP3", "下载、转换 MP3 并生成 TXT",
+                     "获取解析直连", "系统剪贴板", "直连可能短期失效",
                      "抖音专用登录", "小键盘 8", "DPAPI CurrentUser", "每月 10 小时", "COS"
                  })
         {

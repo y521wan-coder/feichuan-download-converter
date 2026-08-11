@@ -41,6 +41,7 @@ from .protocol import (
 )
 from .quality import choices_from_media_descriptors
 from .software_updater import check_software_update
+from .windows_clipboard import ClipboardWriteError, copy_text_to_clipboard
 
 
 class WorkerService:
@@ -50,6 +51,7 @@ class WorkerService:
         self,
         coordinator_factory: Callable[..., DownloadCoordinator] = DownloadCoordinator,
         emit: Callable[[bytes], None] | None = None,
+        clipboard_writer: Callable[[str], None] | None = None,
     ) -> None:
         self.operations = OperationRegistry()
         self._emit = emit or (lambda _message: None)
@@ -58,6 +60,7 @@ class WorkerService:
             on_line=self._on_log_line,
         )
         self.shutdown_requested = False
+        self._clipboard_writer = clipboard_writer or copy_text_to_clipboard
         self._task_lock = threading.RLock()
         self._task_thread: threading.Thread | None = None
         self._active_request_id = ""
@@ -70,6 +73,7 @@ class WorkerService:
             "quality.inspect",
             "core_update.check",
             "software_update.check",
+            "direct_link.copy",
         }:
             self._start_background(request)
             return None
@@ -121,6 +125,7 @@ class WorkerService:
                 "douyin_login.clear",
                 "core_update.check",
                 "software_update.check",
+                "direct_link.copy",
                 "cancel",
                 "shutdown",
             ],
@@ -249,6 +254,8 @@ class WorkerService:
                 payload = self._quality_inspect(request.payload)
             elif request.message_type == "core_update.check":
                 payload = self._core_update_check(request.payload)
+            elif request.message_type == "direct_link.copy":
+                payload = self._direct_link_copy(request.payload)
             else:
                 payload = self._software_update_check(request.payload)
             response = encode_message(request.request_id, f"{request.message_type}.result", payload)
@@ -329,6 +336,43 @@ class WorkerService:
                 ],
             }
         raise ProtocolError("unexpected_result", "下载工作进程返回了未知结果。")
+
+    def _direct_link_copy(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        text = str(payload.get("text") or "").strip()
+        if not text:
+            raise ProtocolError("missing_text", "请输入下载链接或平台分享文本。")
+        try:
+            result = self.coordinator.resolve_direct_link(
+                text,
+                interactive_douyin_login=bool(payload.get("interactive_douyin_login", False)),
+            )
+        except Exception as exc:
+            message = str(exc)
+            if "取消" in message:
+                raise ProtocolError("direct_link_cancelled", "直连解析已取消。") from exc
+            if "只支持" in message or "多个条目" in message:
+                raise ProtocolError(
+                    "direct_link_not_single",
+                    "获取解析直连只支持单视频，不支持主页、合集、频道、播放列表、直播或图文。",
+                ) from exc
+            raise ProtocolError(
+                "direct_link_failed",
+                "没有解析到可复制的单视频直连，请确认链接仍然有效后重试。",
+            ) from exc
+
+        try:
+            try:
+                self._clipboard_writer(result.url)
+            except ClipboardWriteError as exc:
+                raise ProtocolError("clipboard_unavailable", str(exc)) from exc
+            except Exception as exc:
+                raise ProtocolError(
+                    "clipboard_unavailable",
+                    "无法把直连写入系统剪贴板，请稍后重试。",
+                ) from exc
+            return {"copied": True, "media_kind": result.media_kind}
+        finally:
+            result.clear_sensitive()
 
     def _prepared_download(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         operation_id = str(payload.get("operation_id") or "").strip()

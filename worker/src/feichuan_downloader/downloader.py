@@ -40,6 +40,46 @@ class DownloadError(RuntimeError):
     """下载失败，消息已经适合直接显示给用户。"""
 
 
+class DirectLinkResult:
+    """A sensitive direct URL plus a public media-kind label."""
+
+    __slots__ = ("media_kind", "_url", "_cleared")
+
+    def __init__(self, url: str, media_kind: str) -> None:
+        value = str(url or "").strip()
+        kind = str(media_kind or "").strip()
+        if not value:
+            raise ValueError("直连不能为空。")
+        if kind not in {"combined", "audio"}:
+            raise ValueError("直连媒体类型无效。")
+        self.media_kind = kind
+        self._url = value
+        self._cleared = False
+
+    @property
+    def url(self) -> str:
+        return self._url
+
+    @property
+    def cleared(self) -> bool:
+        return self._cleared
+
+    def clear_sensitive(self) -> None:
+        self._url = ""
+        self._cleared = True
+
+    def __repr__(self) -> str:
+        return f"DirectLinkResult(media_kind={self.media_kind!r}, sensitive=<in-memory-redacted>)"
+
+    __str__ = __repr__
+
+    def __getstate__(self) -> object:
+        raise TypeError("直连结果含敏感临时字段，禁止序列化。")
+
+    def __reduce_ex__(self, _protocol: int) -> object:
+        raise TypeError("直连结果含敏感临时字段，禁止序列化。")
+
+
 @dataclass(frozen=True)
 class DownloadResult:
     path: Path
@@ -368,6 +408,200 @@ class Downloader:
             raise DownloadError("无法检测可选品质：下载核心未返回有效格式信息。") from exc
         formats = self._extract_formats(payload)
         return choices_from_ytdlp_formats(formats)
+
+    def resolve_direct_link(
+        self,
+        url: str,
+        *,
+        cancel_event: threading.Event | None = None,
+        on_line: LineCallback | None = None,
+    ) -> DirectLinkResult:
+        """Resolve one media URL without downloading or exposing it to logs."""
+
+        url = (url or "").strip()
+        parts = urlsplit(url)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise DownloadError("请输入有效的 http 或 https 下载链接。")
+        if not YTDLP_PATH.exists():
+            raise DownloadError(f"找不到下载核心：{YTDLP_PATH}")
+        if cancel_event and cancel_event.is_set():
+            raise DownloadError("直连解析已取消。")
+
+        command = [
+            str(YTDLP_PATH),
+            "--ignore-config",
+            "--dump-single-json",
+            "--skip-download",
+            "--simulate",
+            "--no-progress",
+            "--no-playlist",
+            "--playlist-items",
+            "1",
+            "--encoding",
+            "utf-8",
+            "-f",
+            "b/bv*+ba",
+            url,
+        ]
+        self._emit("正在解析单视频直连；不会下载媒体文件……", on_line)
+        self.logger.info("开始解析单视频直连 %s", safe_url_for_log(url))
+        process: subprocess.Popen[bytes] | None = None
+        stdout = b""
+        stderr = b""
+        cancel_requested_at: float | None = None
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            with self._process_lock:
+                self._process = process
+            while True:
+                if cancel_event and cancel_event.is_set():
+                    if cancel_requested_at is None:
+                        cancel_requested_at = time.monotonic()
+                        self.cancel()
+                    elif time.monotonic() - cancel_requested_at >= 2.0:
+                        try:
+                            process.kill()
+                        except OSError:
+                            pass
+                try:
+                    stdout, stderr = process.communicate(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        except OSError as exc:
+            raise DownloadError("启动下载核心解析直连失败。") from exc
+        finally:
+            with self._process_lock:
+                if self._process is process:
+                    self._process = None
+
+        if cancel_event and cancel_event.is_set():
+            raise DownloadError("直连解析已取消。")
+        if process is None or process.returncode != 0:
+            if is_douyin_url(url):
+                try:
+                    direct_url, media_kind = DouyinCapture().resolve_direct_link(
+                        url,
+                        on_line=on_line,
+                        cancel_event=cancel_event,
+                    )
+                    return DirectLinkResult(direct_url, media_kind)
+                except Exception:
+                    pass
+            diagnostics = stderr.decode("utf-8", errors="replace").splitlines()
+            reason = _safe_line(next((line for line in reversed(diagnostics) if line.strip()), ""))
+            raise DownloadError(f"无法解析单视频直连：{reason or '下载核心返回错误'}")
+        try:
+            payload = json.loads(stdout.decode("utf-8", errors="strict").lstrip("\ufeff").strip())
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise DownloadError("无法解析单视频直连：下载核心返回的数据格式无效。") from exc
+        if not isinstance(payload, Mapping):
+            raise DownloadError("无法解析单视频直连：下载核心返回的数据格式无效。")
+
+        try:
+            resolved = self._select_direct_link(payload)
+        except DownloadError:
+            if not is_douyin_url(url):
+                raise
+            try:
+                direct_url, media_kind = DouyinCapture().resolve_direct_link(
+                    url,
+                    on_line=on_line,
+                    cancel_event=cancel_event,
+                )
+                resolved = DirectLinkResult(direct_url, media_kind)
+            except Exception as exc:
+                raise DownloadError("当前单视频没有可复制的音画合一直连或音频直连。") from exc
+        self.logger.info("单视频直连解析完成：类型=%s，地址未记录", resolved.media_kind)
+        return resolved
+
+    @classmethod
+    def _select_direct_link(cls, payload: Mapping[str, Any]) -> DirectLinkResult:
+        live_status = str(payload.get("live_status") or "").strip().lower()
+        if payload.get("is_live") is True or live_status in {"is_live", "is_upcoming"}:
+            raise DownloadError("获取解析直连不支持直播。")
+        selected: list[Mapping[str, Any]] = []
+        requested_downloads = payload.get("requested_downloads")
+        if isinstance(requested_downloads, list):
+            for item in requested_downloads:
+                if not isinstance(item, Mapping):
+                    continue
+                nested = item.get("requested_formats")
+                if isinstance(nested, list):
+                    selected.extend(value for value in nested if isinstance(value, Mapping))
+                else:
+                    selected.append(item)
+        requested_formats = payload.get("requested_formats")
+        if isinstance(requested_formats, list):
+            selected.extend(value for value in requested_formats if isinstance(value, Mapping))
+        if not selected:
+            selected.append(payload)
+
+        combined = [item for item in selected if cls._has_video(item) and cls._has_audio(item)]
+        if not combined:
+            formats = payload.get("formats")
+            if isinstance(formats, list):
+                combined = [
+                    item
+                    for item in formats
+                    if isinstance(item, Mapping) and cls._has_video(item) and cls._has_audio(item)
+                ]
+        candidate = cls._best_direct_candidate(combined)
+        if candidate is not None:
+            return DirectLinkResult(candidate, "combined")
+
+        audio = [item for item in selected if cls._has_audio(item) and not cls._has_video(item)]
+        if not audio:
+            formats = payload.get("formats")
+            if isinstance(formats, list):
+                audio = [
+                    item
+                    for item in formats
+                    if isinstance(item, Mapping) and cls._has_audio(item) and not cls._has_video(item)
+                ]
+        candidate = cls._best_direct_candidate(audio)
+        if candidate is not None:
+            return DirectLinkResult(candidate, "audio")
+        raise DownloadError("当前单视频没有可复制的音画合一直连或音频直连。")
+
+    @staticmethod
+    def _has_video(format_info: Mapping[str, Any]) -> bool:
+        value = str(format_info.get("vcodec") or "").strip().lower()
+        return bool(value and value != "none")
+
+    @staticmethod
+    def _has_audio(format_info: Mapping[str, Any]) -> bool:
+        value = str(format_info.get("acodec") or "").strip().lower()
+        return bool(value and value != "none")
+
+    @staticmethod
+    def _best_direct_candidate(candidates: Iterable[Mapping[str, Any]]) -> str | None:
+        valid: list[tuple[tuple[float, float, float, float], str]] = []
+        for item in candidates:
+            value = str(item.get("url") or "").strip()
+            try:
+                parts = urlsplit(value)
+            except Exception:
+                continue
+            if parts.scheme not in {"http", "https"} or not parts.netloc:
+                continue
+
+            def number(key: str) -> float:
+                raw = item.get(key)
+                try:
+                    return max(0.0, float(raw))
+                except (TypeError, ValueError):
+                    return 0.0
+
+            score = (number("quality"), number("height"), number("tbr"), number("abr"))
+            valid.append((score, value))
+        return max(valid, default=None, key=lambda item: item[0])[1] if valid else None
 
     def download(
         self,

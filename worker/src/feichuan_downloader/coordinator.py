@@ -10,7 +10,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, urlsplit
 
 from .config import LOG_DIR, get_download_dir, sanitize_filename
-from .downloader import DownloadResult, Downloader, UrlInspection
+from .downloader import DirectLinkResult, DownloadResult, Downloader, UrlInspection
 from .logging_utils import get_logger
 from .models import (
     ContentKind,
@@ -259,6 +259,77 @@ class DownloadCoordinator:
                 url,
                 quality_preference=quality_preference,
             )
+        finally:
+            self._end()
+
+    def resolve_direct_link(
+        self,
+        text: str,
+        *,
+        interactive_douyin_login: bool = False,
+    ) -> DirectLinkResult:
+        """Resolve exactly one video and keep its direct URL in worker memory."""
+
+        source, url = self.classify(text)
+        self._begin()
+        try:
+            if source is SourceKind.SINGLE_LINK and self._is_douyin_url(url):
+                try:
+                    scanner = self._new_douyin_scanner(
+                        interactive_login=interactive_douyin_login
+                    )
+                    with self._lock:
+                        self._active_backend = scanner
+                    target = scanner.identify(text)
+                    url = target.url
+                    source = target.source
+                except Exception:
+                    # yt-dlp and the browser capture path can still resolve the
+                    # original short link without exposing its redirect target.
+                    pass
+            if source is not SourceKind.SINGLE_LINK:
+                raise CoordinatorError("获取解析直连只支持单视频，不支持主页、合集、频道或播放列表。")
+            try:
+                direct_path = urlsplit(url).path.lower().rstrip("/") + "/"
+            except Exception:
+                direct_path = ""
+            if "/note/" in direct_path or "/live/" in direct_path:
+                raise CoordinatorError("获取解析直连只支持单视频，不支持直播或图文。")
+
+            downloader = self._new_downloader()
+            with self._lock:
+                self._downloader = downloader
+            if not self._uses_existing_single_link_flow(url):
+                inspection = downloader.inspect_url(
+                    url,
+                    cancel_event=self._cancel_event,
+                    on_line=self.on_line,
+                )
+                if inspection.is_playlist or inspection.count != 1:
+                    raise CoordinatorError("获取解析直连只支持一个视频，当前页面包含多个条目。")
+
+            self._emit(
+                DownloadEvent(
+                    stage=DownloadStage.SCANNING,
+                    message="正在解析单视频直连；不会下载媒体文件。",
+                )
+            )
+            result = downloader.resolve_direct_link(
+                url,
+                cancel_event=self._cancel_event,
+                on_line=self.on_line,
+            )
+            self._emit(
+                DownloadEvent(
+                    stage=DownloadStage.COMPLETED,
+                    current=1,
+                    total=1,
+                    succeeded=1,
+                    overall_percent=100.0,
+                    message="直连解析完成，正在写入系统剪贴板。",
+                )
+            )
+            return result
         finally:
             self._end()
 

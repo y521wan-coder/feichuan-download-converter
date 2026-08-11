@@ -359,11 +359,12 @@ public sealed class MainForm : Form
         };
         processingMode.DropDownStyle = ComboBoxStyle.DropDownList;
         processingMode.AccessibleName = "处理模式";
-        processingMode.AccessibleDescription = "上下方向键选择处理方式，在此处按 Enter 开始。";
+        processingMode.AccessibleDescription = "上下方向键选择下载、转换或获取解析直连，在此处按 Enter 开始。";
         processingMode.Items.AddRange([
             "只下载",
             "下载后转换为 MP3",
-            "下载、转换 MP3 并生成 TXT"
+            "下载、转换 MP3 并生成 TXT",
+            "获取解析直连"
         ]);
         processingMode.SelectedIndex = 0;
         processingMode.TabIndex = 1;
@@ -636,6 +637,12 @@ public sealed class MainForm : Form
         }
 
         var selectedMode = processingMode.SelectedIndex;
+        if (selectedMode == 3)
+        {
+            await CopyDirectLinkAsync(input);
+            return;
+        }
+
         DownloadProtocolOutcome? outcome = null;
         IsProcessing = true;
         previousBatchFinished = false;
@@ -728,6 +735,74 @@ public sealed class MainForm : Form
         if (outcome is not null && selectedMode > 0)
         {
             await BeginDownloadedPostProcessingAsync(outcome, selectedMode);
+        }
+    }
+
+    private async Task CopyDirectLinkAsync(string input)
+    {
+        IsProcessing = true;
+        previousBatchFinished = false;
+        stopBatchRequested = false;
+        currentResultDirectory = null;
+        batchCancellation = new CancellationTokenSource();
+        batchCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        UpdateButtons();
+        UpdateTrayStatus("正在解析直连");
+        SetCurrentTaskProgress("正在解析单视频直连", null);
+        ReportStatus("正在解析单视频直连；不会下载媒体文件。", false);
+        try
+        {
+            var client = await EnsureWorkerClientAsync(batchCancellation.Token);
+            var response = await client.SendAsync(
+                "direct_link.copy",
+                new
+                {
+                    text = input,
+                    interactive_douyin_login = douyinLoginItem.Checked
+                },
+                batchCancellation.Token);
+            var copied = response.Payload.TryGetProperty("copied", out var copiedElement) &&
+                copiedElement.GetBoolean();
+            var mediaKind = response.Payload.TryGetProperty("media_kind", out var kindElement)
+                ? kindElement.GetString() ?? string.Empty
+                : string.Empty;
+            if (!copied)
+            {
+                throw new WorkerProtocolException(
+                    "direct_link_not_copied",
+                    "下载工作进程没有确认剪贴板写入成功。");
+            }
+
+            var detail = mediaKind == "audio"
+                ? "原站没有可用的音画合一直连，已按设置复制最佳音频直连。"
+                : "已复制最佳音画合一直连。";
+            var summary = $"解析成功，直连已复制到系统剪贴板。{detail}直连可能短期失效，请及时使用。";
+            resultText.Text = summary;
+            ReportStatus(summary, false);
+        }
+        catch (OperationCanceledException)
+        {
+            if (workerClient?.IsRunning == true)
+            {
+                await workerClient.CancelOrTerminateAsync(TimeSpan.FromSeconds(5));
+            }
+            ReportStatus("直连解析已取消；没有下载或创建媒体文件。", false);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"获取解析直连失败：{ToActionableError(exception)}", true);
+        }
+        finally
+        {
+            IsProcessing = false;
+            previousBatchFinished = true;
+            batchCancellation.Dispose();
+            batchCancellation = null;
+            ResetProcessingMode();
+            UpdateButtons();
+            UpdateTrayStatus("空闲");
+            SetCurrentTaskProgress("直连解析任务已经结束", null);
+            batchCompletion?.TrySetResult();
         }
     }
 
@@ -937,6 +1012,7 @@ public sealed class MainForm : Form
     {
         1 => "下载后转换为 MP3",
         2 => "下载、转换 MP3 并生成 TXT",
+        3 => "获取解析直连",
         _ => "只下载"
     };
 

@@ -132,6 +132,59 @@ class DouyinCapture:
             if close_synchronously:
                 session.close()
 
+    def resolve_direct_link(
+        self,
+        url: str,
+        on_line: LineCallback | None = None,
+        cancel_event: Any = None,
+    ) -> tuple[str, str]:
+        """Capture one direct URL without downloading media or logging the URL."""
+
+        if not is_douyin_url(url):
+            raise RuntimeError("浏览器直连解析不支持此链接来源。")
+        if not self.browser or not self.browser.exists():
+            raise RuntimeError("未找到 Chrome 或 Edge，无法启用抖音浏览器解析。")
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("直连解析已取消。")
+        session = ChromiumSession(self.browser)
+        try:
+            self._emit("下载核心没有返回直连，正在启用抖音浏览器解析……", on_line)
+            session.start(cancel_event=cancel_event)
+            client = session.open_page("about:blank")
+            client.command("Network.enable", timeout=5)
+            client.command("Page.enable", timeout=5)
+            client.command("Runtime.enable", timeout=5)
+            client.command("Page.navigate", {"url": url}, timeout=10)
+            media, _title = self._collect_media(
+                client,
+                self.timeout,
+                on_line,
+                cancel_event=cancel_event,
+            )
+            if not media:
+                raise RuntimeError("页面中没有发现可复制的媒体直连。")
+
+            combined = [
+                item
+                for item in media
+                if ".m3u8" in str(item.get("url") or "").lower()
+                or "mpegurl" in str(item.get("mime") or "").lower()
+            ]
+            if combined:
+                selected = self._sort_candidates(combined)[0]
+                return str(selected["url"]), "combined"
+
+            audio = self._find_audio_candidate(media)
+            if audio is not None:
+                return str(audio["url"]), "audio"
+
+            ordered = self._sort_candidates(media)
+            if len(ordered) == 1:
+                return str(ordered[0]["url"]), "combined"
+            raise RuntimeError("页面返回了无法可靠区分的音视频分轨，未复制可能错误的直连。")
+        finally:
+            session.close()
+
     @staticmethod
     def _close_session_async(session: ChromiumSession) -> None:
         def worker() -> None:
@@ -523,7 +576,12 @@ class DouyinCapture:
         mime = str(candidate.get("mime") or "").lower()
         suffix = Path(urlsplit(media_url).path).suffix.lower()
         lowered = media_url.lower()
-        if mime.startswith("audio/") or suffix in AUDIO_EXTENSIONS or "ies-music" in lowered:
+        if (
+            mime.startswith("audio/")
+            or suffix in AUDIO_EXTENSIONS
+            or "ies-music" in lowered
+            or "audio" in lowered
+        ):
             return "audio"
         if mime.startswith("video/") or suffix in {".mp4", ".m4v", ".mov", ".webm", ".mkv"}:
             return "video"
