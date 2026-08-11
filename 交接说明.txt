@@ -165,6 +165,7 @@ git log -3 --oneline，并查看 logs\merge-development 最新记录。两个旧
 当前软件版本：1.0（当前安装版内核直接修复，未生成新安装包）
 开发目录：D:\FeichuanDownloadConverterDev
 Git 分支：main
+修复提交：183d562 fix: harden long Douyin downloads and announce progress
 
 本区块结论：
 指定长视频下载失败和小键盘 8 进度朗读均已修复。最终安装版在无人为终止或手工合并的情况下，

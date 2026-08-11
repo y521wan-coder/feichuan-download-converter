@@ -1,5 +1,6 @@
 # 长视频下载与争渡进度朗读修复记录
 
+- 修复提交：`183d562 fix: harden long Douyin downloads and announce progress`
 - 范围：指定约 95 分钟抖音视频下载失败；任务期间小键盘 8 朗读当前百分比。
 - 下载修复：排除短占位，按实际流类型和时长组合候选；长度校验、续传、重试、重新下载最佳轨道；
   FFmpeg stdin 使用 DEVNULL；同卷短英文临时合并名；本地输出不使用 faststart；成功后原子提交。
