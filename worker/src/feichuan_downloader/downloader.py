@@ -86,6 +86,8 @@ class DownloadResult:
     title: str = ""
     used_douyin_fallback: bool = False
     paths: tuple[Path, ...] = ()
+    partial_success: bool = False
+    warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         path = Path(self.path)
@@ -96,6 +98,15 @@ class DownloadResult:
             normalized = (*normalized, path)
         object.__setattr__(self, "path", path)
         object.__setattr__(self, "paths", normalized)
+        object.__setattr__(
+            self,
+            "warnings",
+            tuple(
+                str(value or "").strip()
+                for value in self.warnings
+                if str(value or "").strip()
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -617,6 +628,7 @@ class Downloader:
         on_playlist_progress: PlaylistProgressCallback | None = None,
         download_dir: str | os.PathLike[str] | None = None,
         quality_preference: QualityPreference | str | None = None,
+        force_audio_only: bool = False,
     ) -> DownloadResult:
         url = (url or "").strip()
         parts = urlsplit(url)
@@ -644,7 +656,7 @@ class Downloader:
 
         started_at = time.time()
         before_snapshot = self._snapshot_download_dir(download_dir)
-        audio_only = is_audio_url(url)
+        audio_only = bool(force_audio_only or is_audio_url(url))
         name_template = str(output_name_template or "%(title)s.%(ext)s").strip()
         if (
             not name_template

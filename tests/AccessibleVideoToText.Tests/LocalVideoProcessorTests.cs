@@ -87,6 +87,27 @@ public sealed class LocalVideoProcessorTests
         StringAssert.Contains(exception.Message, "没有可用音轨");
     }
 
+    [TestMethod]
+    public async Task ProcessAsync_ConvertsPureAudioWithoutRequiringVideoTrack()
+    {
+        var sourcePath = Path.Combine(testDirectory, "背景音乐.m4a");
+        await File.WriteAllTextAsync(sourcePath, "source-audio-stays-read-only");
+        var sourceBefore = await File.ReadAllTextAsync(sourcePath);
+        var item = new QueueItem(sourcePath, MediaKind.Audio);
+        var converter = new FakeConverter();
+        var processor = new LocalVideoProcessor(
+            new FakeProbe(hasVideo: false, audioStreams: 1),
+            converter,
+            new AtomicOutputCommitter());
+
+        var result = await processor.ProcessAsync(item, 192, progress: null, CancellationToken.None);
+
+        Assert.IsTrue(File.Exists(result.Mp3Path));
+        Assert.AreEqual(MediaKind.Audio, item.Kind);
+        Assert.AreEqual(sourceBefore, await File.ReadAllTextAsync(sourcePath));
+        Assert.AreEqual(sourcePath, converter.LastRequest?.SourcePath);
+    }
+
     private sealed class FakeProbe(bool hasVideo, int audioStreams) : IMediaProbe
     {
         public Task<MediaProbeResult> ProbeAsync(string sourcePath, CancellationToken cancellationToken)
@@ -126,4 +147,3 @@ public sealed class LocalVideoProcessorTests
             CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }
-

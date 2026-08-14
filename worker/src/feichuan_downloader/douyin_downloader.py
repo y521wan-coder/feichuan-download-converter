@@ -149,6 +149,7 @@ class DouyinDownloader:
         cancel_event: Any = None,
         on_progress: ProgressCallback | None = None,
         quality_preference: QualityPreference | str | None = None,
+        include_description: bool = True,
     ) -> DouyinDownloadResult:
         """下载一个作品；图文的 ``media`` 顺序就是最终图片序号。"""
 
@@ -189,6 +190,7 @@ class DouyinDownloader:
                     selected_mode,
                     cancel_event,
                     on_progress,
+                    include_description,
                 )
             if item.content_type is ContentKind.LIVE:
                 raise DouyinDownloadError("抖音直播首版不下载。")
@@ -387,6 +389,7 @@ class DouyinDownloader:
         mode: DownloadMode,
         cancel_event: Any,
         on_progress: ProgressCallback | None,
+        include_description: bool,
     ) -> DouyinDownloadResult:
         if not descriptors:
             raise DouyinDownloadError("抖音图文没有发现原图。")
@@ -395,13 +398,20 @@ class DouyinDownloader:
             self.download_dir / douyin_image_filename(item, index)
             for index in range(1, len(descriptors) + 1)
         ]
-        description_target = self._description_path(item)
-        description_partial = description_target.with_name(description_target.name + ".part")
+        description_target = self._description_path(item) if include_description else None
+        description_partial = (
+            description_target.with_name(description_target.name + ".part")
+            if description_target is not None
+            else None
+        )
         staged: list[tuple[Path, Path]] = []
-        temporary_paths: set[Path] = {description_partial}
+        temporary_paths: set[Path] = (
+            {description_partial} if description_partial is not None else set()
+        )
         completed_targets: list[Path] = []
         current_index = 0
-        self._unlink(description_partial)
+        if description_partial is not None:
+            self._unlink(description_partial)
 
         try:
             for current_index, (descriptor, target) in enumerate(
@@ -452,15 +462,19 @@ class DouyinDownloader:
                     self._unlink(raw_partial)
                     staged.append((target, converted_partial))
 
-            description_valid = False
-            if mode is not DownloadMode.REDOWNLOAD_ALL and description_target.is_file():
+            description_valid = not include_description
+            if (
+                description_target is not None
+                and mode is not DownloadMode.REDOWNLOAD_ALL
+                and description_target.is_file()
+            ):
                 try:
                     description_target.read_text(encoding="utf-8")
                 except (OSError, UnicodeError):
                     pass
                 else:
                     description_valid = True
-            if not description_valid:
+            if not description_valid and description_partial is not None:
                 description_partial.write_text(
                     self._description_text(item, len(descriptors)),
                     encoding="utf-8",
@@ -471,7 +485,11 @@ class DouyinDownloader:
             for target, stage in staged:
                 os.replace(stage, target)
                 completed_targets.append(target)
-            if not description_valid:
+            if (
+                not description_valid
+                and description_partial is not None
+                and description_target is not None
+            ):
                 os.replace(description_partial, description_target)
             self._cleanup(temporary_paths)
             _emit_progress(on_progress, 100.0)
@@ -479,7 +497,7 @@ class DouyinDownloader:
             return DouyinDownloadResult(
                 item=item,
                 media_paths=ordered_paths,
-                description_path=description_target,
+                description_path=description_target if include_description else None,
                 skipped=not staged and description_valid,
             )
         except _Cancelled:

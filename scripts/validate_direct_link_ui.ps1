@@ -65,9 +65,11 @@ try {
 
     $input = Find-NamedElement $main "下载链接或平台分享文本"
     $combo = Find-NamedElement $main "处理模式"
+    $noteContent = Find-NamedElement $main "图文下载内容"
+    $tabs = Find-NamedElement $main "任务与状态页签"
     $start = Find-NamedElement $main "开始(B)"
     $cancel = Find-NamedElement $main "取消任务(C)"
-    if ($null -in @($input, $combo, $start, $cancel)) {
+    if ($null -in @($input, $combo, $noteContent, $tabs, $start, $cancel)) {
         throw "Required direct-link controls are missing."
     }
     $isLiveAcceptance = -not [string]::IsNullOrWhiteSpace($ShareText)
@@ -106,6 +108,36 @@ try {
     if ($count -ne 4) {
         throw "Processing mode count is $count rather than 4."
     }
+    $combo.SetFocus()
+    Start-Sleep -Milliseconds 100
+    [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+    Start-Sleep -Milliseconds 250
+    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+    if ($focused.Current.Name -ne "图文下载内容") {
+        $combo.SetFocus()
+        Start-Sleep -Milliseconds 100
+        [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+        Start-Sleep -Milliseconds 250
+        $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+        if ($focused.Current.Name -ne "图文下载内容") {
+            throw "Tab from processing mode did not reach note content."
+        }
+    }
+    [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+    Start-Sleep -Milliseconds 250
+    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+    if ($focused.Current.Name -ne "任务与状态页签") {
+        throw "Tab from note content did not reach task tabs."
+    }
+    $noteHandle = [IntPtr]$noteContent.Current.NativeWindowHandle
+    $noteCount = [DirectLinkUiNative]::SendMessage(
+        $noteHandle,
+        0x0146,
+        [IntPtr]::Zero,
+        [IntPtr]::Zero).ToInt64()
+    if ($noteCount -ne 2) {
+        throw "Note content count is $noteCount rather than 2."
+    }
 
     $testInput = if ($isLiveAcceptance) {
         $ShareText
@@ -129,6 +161,11 @@ try {
     if ($selected -ne 3) {
         throw "Could not select the direct-link mode."
     }
+    [DirectLinkUiNative]::SendMessage(
+        $noteHandle,
+        0x014E,
+        [IntPtr]1,
+        [IntPtr]::Zero) | Out-Null
     $start.GetCurrentPattern(
         [System.Windows.Automation.InvokePattern]::Pattern).Invoke()
 
@@ -153,6 +190,14 @@ try {
             $selected -eq 0
         }
         if ($selected -eq 0 -and -not $cancel.Current.IsEnabled -and $expectedResult) {
+            $noteSelected = [DirectLinkUiNative]::SendMessage(
+                $noteHandle,
+                0x0147,
+                [IntPtr]::Zero,
+                [IntPtr]::Zero).ToInt64()
+            if ($noteSelected -ne 0) {
+                throw "Note content did not reset after the task ended."
+            }
             $completedSafely = $true
             break
         }

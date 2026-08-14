@@ -226,6 +226,8 @@ class DownloadPopenRecorder(PopenRecorder):
 def run_download_mode(
     mode: str,
     expected_count: int,
+    *,
+    force_audio_only: bool = False,
 ) -> tuple[list[str], DownloadResult, list[tuple[int, int, str]]]:
     with tempfile.TemporaryDirectory(prefix="feichuan-generic-download-") as temp:
         root = Path(temp)
@@ -244,6 +246,7 @@ def run_download_mode(
                 "https://example.test/category/offline",
                 playlist_mode=mode,
                 expected_count=expected_count,
+                force_audio_only=force_audio_only,
                 on_playlist_progress=lambda current, total, title: item_progress.append(
                     (current, total, title)
                 ),
@@ -262,6 +265,13 @@ def check_download_modes_and_item_progress() -> None:
     assert single_command[single_command.index("-f") + 1] == "bv*+ba/b"
     assert "-S" not in single_command
     assert "--merge-output-format" not in single_command
+
+    audio_command, _audio_result, _audio_progress = run_download_mode(
+        "single",
+        1,
+        force_audio_only=True,
+    )
+    assert audio_command[audio_command.index("-f") + 1] == "bestaudio/best"
 
     all_command, all_result, all_progress = run_download_mode("all", 304)
     assert "--yes-playlist" in all_command

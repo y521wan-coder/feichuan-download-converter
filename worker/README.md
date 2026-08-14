@@ -49,6 +49,10 @@ python D:\飞船下载工具开发\src\main.py
 到短视频预览而没有可校验音频，软件会提示未发现可下载的图文背景音频，不把短 MP4
 保存为成功结果。普通抖音视频 `/video/<id>` 仍保持视频优先。
 
+合并界面可通过可选协议字段 `douyin_note_content=images_and_audio` 请求单条图文的作品原图
+和背景音频。原图只从作品详情 `image_post_info.images`/`images` 解析并保存为 WebP，不扫描
+页面所有 `<img>`，也不生成批量图文说明 TXT；字段缺失或为 `audio_only` 时保持原仅音频行为。
+
 抖音登录使用软件自己的持久 Chrome 资料：
 
 ```text

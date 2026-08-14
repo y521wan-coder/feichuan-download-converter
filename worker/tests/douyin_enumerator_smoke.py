@@ -24,6 +24,7 @@ from feichuan_downloader.douyin_enumerator import (  # noqa: E402
     _DOM_DISCOVERY_EXPRESSION,
     _DOM_METADATA_EXPRESSION,
     _OPEN_LOGIN_EXPRESSION,
+    _RSC_NOTE_EXPRESSION,
     _SCROLL_EXPRESSION,
     DouyinEnumerator,
     identify_douyin_target,
@@ -51,6 +52,7 @@ class FakeCdpClient:
         access_gate: str = "",
         delay_body_once: set[str] | None = None,
         scroll_observations: list[dict[str, Any]] | None = None,
+        rsc_chunks: list[Any] | None = None,
     ) -> None:
         self.events = deque(events)
         self.bodies = bodies
@@ -62,6 +64,7 @@ class FakeCdpClient:
         self.scroll_count = 0
         self.delay_body_once = set(delay_body_once or ())
         self.scroll_observations = deque(scroll_observations or [])
+        self.rsc_chunks = list(rsc_chunks or [])
         self.body_attempts: Counter[str] = Counter()
         self.finished_requests: set[str] = set()
 
@@ -115,6 +118,8 @@ class FakeCdpClient:
                 }
             if "__FEICHUAN_DOUYIN_ACCESS_GATE__" in expression:
                 return {"result": {"value": self.access_gate}}
+            if "__FEICHUAN_DOUYIN_RSC_NOTE__" in expression:
+                return {"result": {"value": self.rsc_chunks}}
             if "__FEICHUAN_DOUYIN_SCROLL__" in expression:
                 self.scroll_count += 1
                 if self.scroll_observations:
@@ -595,6 +600,83 @@ def check_identification() -> None:
 
     single = identify_douyin_target("https://www.douyin.com/video/1234567890")
     assert single.source is SourceKind.SINGLE_LINK
+
+
+def check_single_note_detail_scan() -> None:
+    work_id = "7341234567890123456"
+    request_id = "detail-1"
+    client = FakeCdpClient(
+        [
+            response_event(request_id, "/aweme/v1/web/aweme/detail/"),
+            loading_finished_event(request_id),
+        ],
+        {request_id: {"aweme_detail": image_aweme(work_id, "图文作者")}},
+    )
+    enumerator, provider = enumerator_for(
+        client,
+        cookie_header="note_session=temporary",
+        canonical_cookie_header="canonical_note=temporary",
+    )
+
+    bundle = enumerator.scan_single_note(
+        f"https://www.douyin.com/share/note/{work_id}"
+    )
+    assert provider.session.closed
+    assert bundle.result.source is SourceKind.SINGLE_LINK
+    assert bundle.result.enumeration_complete
+    assert bundle.result.unique_count == 1
+    item = bundle.result.items[0]
+    assert item.work_id == work_id
+    assert item.content_type is ContentKind.IMAGE
+    assert len(bundle.media_for(work_id)) == 2
+    assert bundle.cookie_header == "note_session=temporary; canonical_note=temporary"
+    bundle.clear_sensitive()
+    assert bundle.cleared and not bundle.media_for(work_id)
+
+
+def check_single_note_rsc_fallback() -> None:
+    work_id = "7341234567890123499"
+    detail = {
+        "awemeId": work_id,
+        "desc": "RSC 图文作品",
+        "createTime": 1_700_000_200,
+        "authorInfo": {"nickname": "RSC 作者"},
+        "images": [
+            {
+                "width": 2160,
+                "height": 2880,
+                "downloadUrlList": [
+                    f"https://media.invalid/{work_id}/original-01.webp"
+                ],
+                "urlList": [
+                    f"https://media.invalid/{work_id}/display-01.webp"
+                ],
+            }
+        ],
+    }
+    rsc_payload = json.dumps(
+        {"statusCode": 0, "aweme": {"detail": detail}},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    client = FakeCdpClient(
+        [],
+        {},
+        rsc_chunks=[[1, f"fixture:{rsc_payload}"]],
+    )
+    enumerator, provider = enumerator_for(client)
+
+    bundle = enumerator.scan_single_note(f"https://www.douyin.com/note/{work_id}")
+    assert provider.session.closed
+    assert bundle.result.unique_count == 1
+    item = bundle.result.items[0]
+    assert item.work_id == work_id and item.author == "RSC 作者"
+    descriptors = bundle.media_for(work_id)
+    assert len(descriptors) == 1
+    assert descriptors[0].width == 2160 and descriptors[0].height == 2880
+    assert descriptors[0].media_url.endswith("original-01.webp")
+    assert "__FEICHUAN_DOUYIN_RSC_NOTE__" in _RSC_NOTE_EXPRESSION
+    bundle.clear_sensitive()
 
 
 def check_anonymous_session_provider() -> None:
@@ -1349,6 +1431,8 @@ def check_live_cards_are_not_treated_as_videos() -> None:
 
 def main() -> None:
     check_identification()
+    check_single_note_detail_scan()
+    check_single_note_rsc_fallback()
     check_anonymous_session_provider()
     check_isolated_persistent_profile_lifecycle()
     check_complete_profile()

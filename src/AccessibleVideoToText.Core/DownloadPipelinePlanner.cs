@@ -3,6 +3,7 @@ namespace AccessibleVideoToText.Core;
 public enum DownloadedMediaAction
 {
     ConvertVideo,
+    ConvertAudio,
     UseExistingMp3,
     Skip
 }
@@ -15,6 +16,11 @@ public static class DownloadPipelinePlanner
     {
         ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".webm", ".m4v",
         ".mpeg", ".mpg", ".ts", ".m2ts", ".3gp"
+    };
+
+    private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus", ".wma"
     };
 
     public static IReadOnlyList<DownloadedMediaPlan> Create(IEnumerable<string> paths)
@@ -43,6 +49,10 @@ public static class DownloadPipelinePlanner
             else if (VideoExtensions.Contains(extension))
             {
                 result.Add(new DownloadedMediaPlan(path, DownloadedMediaAction.ConvertVideo, "视频可转换 MP3"));
+            }
+            else if (AudioExtensions.Contains(extension))
+            {
+                result.Add(new DownloadedMediaPlan(path, DownloadedMediaAction.ConvertAudio, "音频可转换 MP3"));
             }
             else
             {

@@ -40,6 +40,7 @@ _USER_AGENT = (
 )
 _DOUYIN_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Shanghai")
 _POST_PATH = "/aweme/v1/web/aweme/post/"
+_AWEME_DETAIL_PATH = "/aweme/v1/web/aweme/detail/"
 _MIX_DETAIL_PATH = "/aweme/v1/web/mix/detail/"
 _MIX_AWEME_PATH = "/aweme/v1/web/mix/aweme/"
 _PLAYLET_DETAIL_PATH = "/web/api/playlet/detail/"
@@ -98,6 +99,13 @@ _CAPTCHA_EXPRESSION = r"""
   return selectors.some((selector) =>
     Array.from(document.querySelectorAll(selector)).some(isVisible)
   );
+})()
+"""
+
+_RSC_NOTE_EXPRESSION = r"""
+(() => {
+  /* __FEICHUAN_DOUYIN_RSC_NOTE__ */
+  return Array.isArray(window.__pace_f) ? window.__pace_f : [];
 })()
 """
 
@@ -562,6 +570,284 @@ class DouyinEnumerator:
                 cancel_event=cancel_event,
                 on_progress=on_progress,
             )
+
+    def scan_single_note(
+        self,
+        value: str,
+        *,
+        cancel_event: Any = None,
+        on_progress: Callable[[int, str], None] | None = None,
+    ) -> DouyinScanBundle:
+        """Capture one ``/note/`` detail response without enumerating page images."""
+
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("任务已取消。")
+        target = self.identify(value)
+        path = urlsplit(target.url).path.lower().rstrip("/") + "/"
+        if target.source is not SourceKind.SINGLE_LINK or "/note/" not in path:
+            raise ValueError("该抖音链接不是单条图文作品。")
+        match = re.search(r"/(?:share/)?note/([^/?#]+)/", path)
+        expected_work_id = match.group(1) if match else ""
+
+        session = self.session_provider.open(target.url, cancel_event=cancel_event)
+        with session:
+            state = _EnumerationState(SourceKind.SINGLE_LINK)
+            deadline = time.monotonic() + self.scan_timeout
+            rsc_ready_at = time.monotonic() + min(
+                8.0,
+                max(0.5, self.scan_timeout / 2.0),
+            )
+            rsc_attempted = False
+            idle_rounds = 0
+            login_attempted = False
+            while time.monotonic() < deadline:
+                if cancel_event and cancel_event.is_set():
+                    raise RuntimeError("任务已取消。")
+                event = session.client.next_event(
+                    timeout=min(self.event_timeout, max(0.0, deadline - time.monotonic()))
+                )
+                if event is not None:
+                    if self._event_indicates_captcha(event):
+                        raise RuntimeError("页面触发验证码或安全验证。")
+                    self._handle_event(session.client, event, state)
+                    idle_rounds = 0
+                else:
+                    idle_rounds += 1
+
+                selected = next(
+                    (
+                        item
+                        for item in state.items.values()
+                        if item.content_type is ContentKind.IMAGE
+                        and (not expected_work_id or item.work_id == expected_work_id)
+                        and state.media.get(item.work_id)
+                    ),
+                    None,
+                )
+                if selected is not None:
+                    if on_progress:
+                        on_progress(1, "已解析单条图文作品原图。")
+                    cookie_header = self._cookie_header_for_urls(
+                        session,
+                        target.url,
+                        "https://www.douyin.com/",
+                    )
+                    result = ScanResult(
+                        source=SourceKind.SINGLE_LINK,
+                        author=selected.author,
+                        reported_count=1,
+                        unique_count=1,
+                        content_counts={ContentKind.IMAGE: 1},
+                        enumeration_complete=True,
+                        items=(selected,),
+                    )
+                    media = self._finalize_media(
+                        {selected.work_id: state.media[selected.work_id]},
+                        cookie_header=cookie_header,
+                    )
+                    return DouyinScanBundle(result, media, cookie_header=cookie_header)
+
+                if not rsc_attempted and time.monotonic() >= rsc_ready_at:
+                    rsc_attempted = True
+                    rsc_bundle = self._single_note_rsc_bundle(
+                        session,
+                        target,
+                        expected_work_id,
+                    )
+                    if rsc_bundle is not None:
+                        if on_progress:
+                            on_progress(1, "已从图文页面数据解析作品原图。")
+                        return rsc_bundle
+
+                if idle_rounds < self.max_idle_rounds:
+                    continue
+                access_gate = self._access_gate_reason(session.client)
+                if access_gate and self.interactive_login and not login_attempted:
+                    login_attempted = True
+                    if on_progress:
+                        on_progress(0, "抖音要求登录，请在临时浏览器中完成官方扫码登录。")
+                    login_error = self._wait_for_interactive_login(
+                        session.client,
+                        target.url,
+                        cancel_event=cancel_event,
+                    )
+                    if login_error:
+                        raise RuntimeError(login_error)
+                    drain_events = getattr(session.client, "drain_events", None)
+                    if callable(drain_events):
+                        drain_events()
+                    state = _EnumerationState(SourceKind.SINGLE_LINK)
+                    session.client.command(
+                        "Page.reload",
+                        {"ignoreCache": True},
+                        timeout=15,
+                    )
+                    deadline = time.monotonic() + self.scan_timeout
+                    idle_rounds = 0
+                    continue
+                if access_gate:
+                    raise RuntimeError(access_gate)
+                idle_rounds = 0
+
+            rsc_bundle = self._single_note_rsc_bundle(
+                session,
+                target,
+                expected_work_id,
+            )
+            if rsc_bundle is not None:
+                if on_progress:
+                    on_progress(1, "已从图文页面数据解析作品原图。")
+                return rsc_bundle
+
+        raise RuntimeError("没有从作品详情响应中解析到图文原图。")
+
+    def _single_note_rsc_bundle(
+        self,
+        session: _SessionLike,
+        target: DouyinTarget,
+        expected_work_id: str,
+    ) -> DouyinScanBundle | None:
+        """Read the current note's first-party RSC data when no detail XHR fires."""
+
+        try:
+            evaluated = session.client.command(
+                "Runtime.evaluate",
+                {
+                    "expression": _RSC_NOTE_EXPRESSION,
+                    "returnByValue": True,
+                },
+                timeout=10,
+            )
+            chunks = self._runtime_value(evaluated)
+        except Exception:
+            return None
+        detail = self._rsc_note_detail(chunks, expected_work_id)
+        if detail is None:
+            return None
+        parsed = self._parse_aweme(self._normalize_rsc_note(detail))
+        if parsed is None:
+            return None
+        item, candidates = parsed
+        if item.content_type is not ContentKind.IMAGE or not candidates:
+            return None
+
+        cookie_header = self._cookie_header_for_urls(
+            session,
+            target.url,
+            "https://www.douyin.com/",
+        )
+        result = ScanResult(
+            source=SourceKind.SINGLE_LINK,
+            author=item.author,
+            reported_count=1,
+            unique_count=1,
+            content_counts={ContentKind.IMAGE: 1},
+            enumeration_complete=True,
+            items=(item,),
+        )
+        media = self._finalize_media(
+            {item.work_id: list(candidates)},
+            cookie_header=cookie_header,
+        )
+        return DouyinScanBundle(result, media, cookie_header=cookie_header)
+
+    @classmethod
+    def _rsc_note_detail(
+        cls,
+        chunks: Any,
+        expected_work_id: str,
+    ) -> Mapping[str, Any] | None:
+        if not isinstance(chunks, list):
+            return None
+        decoder = json.JSONDecoder()
+        for entry in chunks:
+            if (
+                not isinstance(entry, list)
+                or len(entry) < 2
+                or not isinstance(entry[1], str)
+            ):
+                continue
+            raw = entry[1]
+            if '"aweme"' not in raw or '"images"' not in raw:
+                continue
+            for match in re.finditer(r"\{", raw):
+                try:
+                    value, _end = decoder.raw_decode(raw, match.start())
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                detail = cls._find_rsc_note_detail(value, expected_work_id)
+                if detail is not None:
+                    return detail
+        return None
+
+    @staticmethod
+    def _find_rsc_note_detail(
+        value: Any,
+        expected_work_id: str,
+    ) -> Mapping[str, Any] | None:
+        stack: list[Any] = [value]
+        while stack:
+            current = stack.pop()
+            if isinstance(current, Mapping):
+                aweme = current.get("aweme")
+                detail = aweme.get("detail") if isinstance(aweme, Mapping) else None
+                if isinstance(detail, Mapping):
+                    work_id = str(
+                        detail.get("awemeId")
+                        or detail.get("aweme_id")
+                        or ""
+                    ).strip()
+                    images = detail.get("images")
+                    if (
+                        work_id == expected_work_id
+                        and isinstance(images, list)
+                        and images
+                    ):
+                        return detail
+                stack.extend(current.values())
+            elif isinstance(current, list):
+                stack.extend(current)
+        return None
+
+    @staticmethod
+    def _normalize_rsc_note(detail: Mapping[str, Any]) -> dict[str, Any]:
+        author_info = detail.get("authorInfo")
+        author = (
+            str(author_info.get("nickname") or "").strip()
+            if isinstance(author_info, Mapping)
+            else ""
+        )
+        images: list[dict[str, Any]] = []
+        raw_images = detail.get("images")
+        if isinstance(raw_images, list):
+            for raw_image in raw_images:
+                if not isinstance(raw_image, Mapping):
+                    continue
+                download_urls = raw_image.get("downloadUrlList")
+                display_urls = raw_image.get("urlList")
+                images.append(
+                    {
+                        "download_url_list": (
+                            list(download_urls)
+                            if isinstance(download_urls, list)
+                            else []
+                        ),
+                        "url_list": (
+                            list(display_urls)
+                            if isinstance(display_urls, list)
+                            else []
+                        ),
+                        "width": raw_image.get("width"),
+                        "height": raw_image.get("height"),
+                    }
+                )
+        return {
+            "aweme_id": detail.get("awemeId") or detail.get("aweme_id"),
+            "desc": detail.get("desc") or detail.get("caption"),
+            "create_time": detail.get("createTime") or detail.get("create_time"),
+            "author": {"nickname": author},
+            "images": images,
+        }
 
     def _scan_playlet_http(
         self,
@@ -1241,6 +1527,8 @@ class DouyinEnumerator:
 
     @staticmethod
     def _endpoint_relevant(endpoint: str, source: SourceKind) -> bool:
+        if source is SourceKind.SINGLE_LINK:
+            return endpoint == "aweme_detail"
         if source is SourceKind.DOUYIN_PROFILE:
             return endpoint == "post"
         return endpoint in {"mix_detail", "mix_aweme"}
@@ -1258,6 +1546,8 @@ class DouyinEnumerator:
             path = urlsplit(url).path.lower()
         except Exception:
             return None
+        if _AWEME_DETAIL_PATH in path:
+            return "aweme_detail"
         if _POST_PATH in path:
             return "post"
         if _MIX_DETAIL_PATH in path:
@@ -1333,6 +1623,9 @@ class DouyinEnumerator:
         for container in (payload, payload.get("data")):
             if not isinstance(container, Mapping):
                 continue
+            detail = container.get("aweme_detail")
+            if isinstance(detail, Mapping):
+                return [detail]
             value = container.get("aweme_list")
             if isinstance(value, list):
                 return [item for item in value if isinstance(item, Mapping)]

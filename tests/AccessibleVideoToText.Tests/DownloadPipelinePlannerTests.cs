@@ -23,7 +23,7 @@ public sealed class DownloadPipelinePlannerTests
                 DownloadedMediaAction.ConvertVideo,
                 DownloadedMediaAction.UseExistingMp3,
                 DownloadedMediaAction.Skip,
-                DownloadedMediaAction.Skip
+                DownloadedMediaAction.ConvertAudio
             },
             plans.Select(plan => plan.Action).ToArray());
         Assert.IsTrue(plans.Where(plan => plan.Action == DownloadedMediaAction.Skip)

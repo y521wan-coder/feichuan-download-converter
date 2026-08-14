@@ -383,6 +383,25 @@ def main() -> None:
             assert "DESCRIPTION_URL_SECRET" not in description
             assert not list(output.glob("*.part"))
 
+            no_description_item = WorkItem(
+                platform=Platform.DOUYIN,
+                work_id="image-no-description",
+                content_type=ContentKind.IMAGE,
+                title="不生成说明",
+                author="图文作者",
+                published_at=date(2026, 7, 18),
+                canonical_url=f"{base}/note/image-no-description",
+            )
+            no_description_result = backend.download(
+                no_description_item,
+                (descriptor(base, "/one.webp", quality="原图1"),),
+                include_description=False,
+            )
+            assert no_description_result.description_path is None
+            assert len(no_description_result.files) == 1
+            assert no_description_result.media_paths[0].is_file()
+            assert not list(output.glob("*image-no-description*说明.txt"))
+
             # REDOWNLOAD_ALL 在全部新图验证前不替换旧目标；第二张失败时旧文件仍完整。
             failing_item = WorkItem(
                 platform=Platform.DOUYIN,

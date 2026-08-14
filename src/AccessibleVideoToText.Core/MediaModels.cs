@@ -5,6 +5,7 @@ namespace AccessibleVideoToText.Core;
 public enum MediaKind
 {
     Video,
+    Audio,
     Mp3,
     ProbeCandidate
 }
@@ -38,6 +39,7 @@ public sealed class QueueItem
     public string KindText => Kind switch
     {
         MediaKind.Video => "视频",
+        MediaKind.Audio => "音频",
         MediaKind.Mp3 => "MP3",
         MediaKind.ProbeCandidate => "待探测媒体",
         _ => "未知"

@@ -126,6 +126,7 @@ class WorkerService:
                 "core_update.check",
                 "software_update.check",
                 "direct_link.copy",
+                "douyin.note.images",
                 "cancel",
                 "shutdown",
             ],
@@ -276,10 +277,19 @@ class WorkerService:
         if not text:
             raise ProtocolError("missing_text", "请输入下载链接或平台分享文本。")
         quality = str(payload.get("quality_preference") or "best").strip()
+        douyin_note_content = str(
+            payload.get("douyin_note_content") or "audio_only"
+        ).strip()
+        if douyin_note_content not in {"audio_only", "images_and_audio"}:
+            raise ProtocolError(
+                "invalid_douyin_note_content",
+                "未知的抖音图文下载内容选项。",
+            )
         outcome = self.coordinator.scan_or_download(
             text,
             interactive_douyin_login=bool(payload.get("interactive_douyin_login", False)),
             quality_preference=quality,
+            douyin_note_content=douyin_note_content,
         )
         if isinstance(outcome, DownloadResult):
             return self._download_result_payload(outcome)
@@ -463,6 +473,8 @@ class WorkerService:
             "paths": [str(path) for path in paths],
             "title": result.title,
             "used_douyin_fallback": result.used_douyin_fallback,
+            "partial_success": result.partial_success,
+            "warnings": [sanitize_public_text(value) for value in result.warnings],
         }
 
     @staticmethod

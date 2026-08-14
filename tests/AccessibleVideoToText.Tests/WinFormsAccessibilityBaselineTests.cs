@@ -23,7 +23,8 @@ public sealed class WinFormsAccessibilityBaselineTests
             var linkInput = controls.OfType<TextBox>().Single(textBox =>
                 textBox.AccessibleName == "下载链接或平台分享文本");
             Assert.AreEqual(0, linkInput.TabIndex);
-            var mode = controls.OfType<ComboBox>().Single();
+            var mode = controls.OfType<ComboBox>().Single(comboBox =>
+                comboBox.AccessibleName == "处理模式");
             Assert.AreEqual(ComboBoxStyle.DropDownList, mode.DropDownStyle);
             Assert.AreEqual(1, mode.TabIndex);
             CollectionAssert.AreEqual(
@@ -36,6 +37,15 @@ public sealed class WinFormsAccessibilityBaselineTests
                 },
                 mode.Items.Cast<string>().ToArray());
             Assert.AreEqual(0, mode.SelectedIndex);
+            var noteContent = controls.OfType<ComboBox>().Single(comboBox =>
+                comboBox.AccessibleName == "图文下载内容");
+            Assert.AreEqual(ComboBoxStyle.DropDownList, noteContent.DropDownStyle);
+            Assert.AreEqual(2, noteContent.TabIndex);
+            Assert.AreEqual(1, mode.Parent?.TabIndex);
+            Assert.AreEqual(2, noteContent.Parent?.TabIndex);
+            CollectionAssert.AreEqual(
+                new[] { "仅下载音频", "下载图片和音频" },
+                noteContent.Items.Cast<string>().ToArray());
             mode.SelectedIndex = 3;
             var enter = new KeyEventArgs(Keys.Enter);
             var onKeyDown = typeof(Control).GetMethod(
@@ -44,14 +54,20 @@ public sealed class WinFormsAccessibilityBaselineTests
             Assert.IsNotNull(onKeyDown);
             onKeyDown.Invoke(mode, [enter]);
             Assert.IsTrue(enter.SuppressKeyPress);
+            noteContent.SelectedIndex = 1;
+            var noteEnter = new KeyEventArgs(Keys.Enter);
+            onKeyDown.Invoke(noteContent, [noteEnter]);
+            Assert.IsTrue(noteEnter.SuppressKeyPress);
             var resetMode = typeof(MainForm).GetMethod(
                 "ResetProcessingMode",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.IsNotNull(resetMode);
             resetMode.Invoke(form, null);
             Assert.AreEqual(0, mode.SelectedIndex);
+            Assert.AreEqual(0, noteContent.SelectedIndex);
 
             var tabs = controls.OfType<TabControl>().Single();
+            Assert.AreEqual(3, tabs.TabIndex);
             Assert.AreEqual(2, tabs.TabPages.Count);
             Assert.AreEqual("任务队列", tabs.TabPages[0].Text);
             Assert.AreEqual("状态与日志", tabs.TabPages[1].Text);
@@ -297,6 +313,7 @@ public sealed class WinFormsAccessibilityBaselineTests
         foreach (var required in new[]
                  {
                      "Ctrl+V", "只下载", "下载后转换为 MP3", "下载、转换 MP3 并生成 TXT",
+                     "图文下载内容", "下载图片和音频", "M4A",
                      "获取解析直连", "系统剪贴板", "直连可能短期失效",
                      "抖音专用登录", "小键盘 8", "DPAPI CurrentUser", "每月 10 小时", "COS"
                  })

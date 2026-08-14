@@ -221,6 +221,7 @@ class DownloadCoordinator:
         *,
         interactive_douyin_login: bool = False,
         quality_preference: QualityPreference | str | None = None,
+        douyin_note_content: str = "audio_only",
     ) -> DownloadResult | PreparedScan | PreparedGenericDownload:
         source, url = self.classify(text)
         self._begin()
@@ -253,6 +254,19 @@ class DownloadCoordinator:
                 )
             if source in {SourceKind.YOUTUBE_PLAYLIST, SourceKind.YOUTUBE_CHANNEL}:
                 return self._scan_youtube(url, source)
+            if self._is_douyin_note_url(url):
+                if douyin_note_content == "images_and_audio":
+                    return self._download_single_douyin_note_bundle(
+                        url,
+                        scanner=scanner,
+                        interactive_login=interactive_douyin_login,
+                        quality_preference=quality_preference,
+                    )
+                return self._download_single(
+                    url,
+                    quality_preference=quality_preference,
+                    force_audio_only=True,
+                )
             if self._uses_existing_single_link_flow(url):
                 return self._download_single(url, quality_preference=quality_preference)
             return self._inspect_or_download_generic(
@@ -851,6 +865,7 @@ class DownloadCoordinator:
         *,
         downloader: Any = None,
         quality_preference: QualityPreference | str | None = None,
+        force_audio_only: bool = False,
     ) -> DownloadResult:
         downloader = downloader or self._new_downloader()
         with self._lock:
@@ -883,6 +898,7 @@ class DownloadCoordinator:
             playlist_mode="single",
             expected_count=1,
             quality_preference=quality_preference,
+            force_audio_only=force_audio_only,
         )
         self._emit(
             DownloadEvent(
@@ -896,6 +912,166 @@ class DownloadCoordinator:
             )
         )
         return result
+
+    def _download_single_douyin_note_bundle(
+        self,
+        url: str,
+        *,
+        scanner: Any = None,
+        interactive_login: bool = False,
+        quality_preference: QualityPreference | str | None = None,
+    ) -> DownloadResult:
+        """Download one note's atomic image set and background audio independently."""
+
+        selected_quality = coerce_quality_preference(quality_preference)
+        image_paths: tuple[Path, ...] = ()
+        audio_paths: tuple[Path, ...] = ()
+        image_error = ""
+        audio_error = ""
+        audio_title = ""
+        used_fallback = False
+        bundle: Any = None
+
+        self._emit(
+            DownloadEvent(
+                stage=DownloadStage.SCANNING,
+                total=2,
+                message="正在解析单条抖音图文原图。",
+            )
+        )
+        try:
+            scanner = scanner or self._new_douyin_scanner(
+                interactive_login=interactive_login
+            )
+            with self._lock:
+                self._active_backend = scanner
+            bundle = scanner.scan_single_note(
+                url,
+                cancel_event=self._cancel_event,
+                on_progress=lambda count, message="": self._emit(
+                    DownloadEvent(
+                        stage=DownloadStage.SCANNING,
+                        scanned_count=max(0, int(count)),
+                        total=2,
+                        message=message or "正在解析单条抖音图文原图。",
+                    )
+                ),
+            )
+            if self._cancel_event.is_set():
+                raise CoordinatorError("下载已取消。")
+            item = next(
+                (
+                    value
+                    for value in bundle.result.items
+                    if value.content_type is ContentKind.IMAGE
+                ),
+                None,
+            )
+            if item is None:
+                raise CoordinatorError("作品详情没有返回图文原图。")
+            descriptors = tuple(bundle.media_by_work_id.get(item.work_id, ()))
+            if self._douyin_downloader_factory:
+                image_backend = self._douyin_downloader_factory()
+            else:
+                from .douyin_downloader import DouyinDownloader
+
+                image_backend = DouyinDownloader(quality_preference=selected_quality)
+            with self._lock:
+                self._active_backend = image_backend
+            image_result = image_backend.download(
+                item,
+                descriptors,
+                cookie_header=bundle.cookie_header,
+                cancel_event=self._cancel_event,
+                on_progress=lambda value: self._emit(
+                    DownloadEvent(
+                        stage=DownloadStage.DOWNLOADING,
+                        current=1,
+                        total=2,
+                        overall_percent=(value or 0.0) * 0.55,
+                        message="正在下载图文原图。",
+                    )
+                ),
+                quality_preference=selected_quality,
+                include_description=False,
+            )
+            image_paths = tuple(image_result.media_paths)
+        except Exception as exc:
+            if self._cancel_event.is_set() or "取消" in str(exc):
+                raise CoordinatorError("下载已取消。") from exc
+            image_error = self._safe_failure(str(exc)) or "图文原图下载失败"
+        finally:
+            clear_sensitive = getattr(bundle, "clear_sensitive", None)
+            if callable(clear_sensitive):
+                clear_sensitive()
+
+        try:
+            audio_downloader = self._new_downloader()
+            with self._lock:
+                self._downloader = audio_downloader
+                self._active_backend = audio_downloader
+            audio_result = audio_downloader.download(
+                url,
+                on_line=self.on_line,
+                on_progress=lambda value: self._emit(
+                    DownloadEvent(
+                        stage=DownloadStage.DOWNLOADING,
+                        current=2,
+                        total=2,
+                        overall_percent=55.0 + (value or 0.0) * 0.45,
+                        message="正在下载图文背景音频。",
+                    )
+                ),
+                cancel_event=self._cancel_event,
+                playlist_mode="single",
+                expected_count=1,
+                quality_preference=selected_quality,
+                force_audio_only=True,
+            )
+            audio_paths = tuple(
+                getattr(audio_result, "paths", ()) or (audio_result.path,)
+            )
+            audio_title = audio_result.title
+            used_fallback = audio_result.used_douyin_fallback
+        except Exception as exc:
+            if self._cancel_event.is_set() or "取消" in str(exc):
+                raise CoordinatorError("下载已取消。") from exc
+            audio_error = self._safe_failure(str(exc)) or "图文背景音频下载失败"
+
+        paths = tuple(dict.fromkeys((*image_paths, *audio_paths)))
+        warnings = tuple(
+            value
+            for value in (
+                f"图片：{image_error}" if image_error else "",
+                f"音频：{audio_error}" if audio_error else "",
+            )
+            if value
+        )
+        if not paths:
+            reason = "；".join(warnings) or "没有得到可用的图片或背景音频。"
+            raise CoordinatorError(f"抖音图文下载失败：{reason}")
+
+        partial_success = bool(warnings)
+        self._emit(
+            DownloadEvent(
+                stage=DownloadStage.COMPLETED,
+                current=2,
+                total=2,
+                succeeded=int(bool(image_paths)) + int(bool(audio_paths)),
+                failed=len(warnings),
+                overall_percent=100.0,
+                current_file=paths[0].name,
+                message="图文图片和音频部分成功。" if partial_success else "图文图片和音频下载完成。",
+            )
+        )
+        return DownloadResult(
+            path=paths[0],
+            title=audio_title,
+            used_douyin_fallback=used_fallback,
+            paths=paths,
+            partial_success=partial_success,
+            warnings=warnings,
+        )
 
     def _new_downloader(self) -> Any:
         if self._downloader_factory:
@@ -1055,6 +1231,16 @@ class DownloadCoordinator:
             or host.endswith(".douyin.com")
             or host.endswith(".iesdouyin.com")
         )
+
+    @classmethod
+    def _is_douyin_note_url(cls, url: str) -> bool:
+        if not cls._is_douyin_url(url):
+            return False
+        try:
+            path = urlsplit(url).path.lower().rstrip("/") + "/"
+        except Exception:
+            return False
+        return "/note/" in path
 
     @staticmethod
     def _is_youtube_url(url: str) -> bool:

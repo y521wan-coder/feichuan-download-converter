@@ -95,6 +95,7 @@ def check_subprocess_round_trip() -> None:
         assert hello["version"] == PROTOCOL_VERSION
         assert hello["type"] == "hello.result"
         assert hello["payload"]["worker_version"] == "1.0"
+        assert "douyin.note.images" in hello["payload"]["capabilities"]
 
         classified = exchange(
             request(
@@ -125,12 +126,16 @@ def check_background_download_and_progress() -> None:
             completed.set()
 
     class FakeCoordinator:
+        last_note_content = ""
         def __init__(self, *, on_event=None, on_line=None) -> None:
             self.on_event = on_event
             self.on_line = on_line
             self.busy = False
 
         def scan_or_download(self, _text, **_kwargs):
+            type(self).last_note_content = str(
+                _kwargs.get("douyin_note_content") or ""
+            )
             self.busy = True
             try:
                 if self.on_event:
@@ -162,6 +167,29 @@ def check_background_download_and_progress() -> None:
     result = next(message for message in emitted if message["type"] == "task.start.result")
     assert result["payload"]["kind"] == "download"
     assert result["payload"]["paths"] == [r"D:\output\sample.mp4"]
+    assert FakeCoordinator.last_note_content == "audio_only"
+
+    try:
+        service._task_start(
+            {
+                "text": "https://example.com",
+                "douyin_note_content": "unsupported",
+            }
+        )
+    except ProtocolError as exc:
+        assert exc.code == "invalid_douyin_note_content"
+    else:
+        raise AssertionError("invalid note content value was accepted")
+
+    partial_payload = service._download_result_payload(
+        DownloadResult(
+            Path(r"D:\output\sample.m4a"),
+            partial_success=True,
+            warnings=("图片：离线失败",),
+        )
+    )
+    assert partial_payload["partial_success"] is True
+    assert partial_payload["warnings"] == ["图片：离线失败"]
 
 
 def check_cancel_reaches_idle_status() -> None:

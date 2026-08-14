@@ -18,6 +18,7 @@ public sealed class MainForm : Form
     private readonly LocalVideoProcessor localVideoProcessor;
     private readonly TextBox linkInput = new();
     private readonly ComboBox processingMode = new();
+    private readonly ComboBox douyinNoteContent = new();
     private readonly TabControl taskTabs = new();
     private readonly ListView queueList = new();
     private readonly Label statusLabel = new();
@@ -85,10 +86,10 @@ public sealed class MainForm : Form
         Controls.Add(BuildLayout());
         Controls.Add(MainMenuStrip);
 
-        openFileDialog.Title = "选择视频或 MP3";
+        openFileDialog.Title = "选择视频或音频";
         openFileDialog.Multiselect = true;
         openFileDialog.CheckFileExists = true;
-        openFileDialog.Filter = "视频和 MP3|*.mp4;*.mkv;*.mov;*.avi;*.wmv;*.flv;*.webm;*.m4v;*.mpeg;*.mpg;*.ts;*.m2ts;*.3gp;*.mp3|所有文件|*.*";
+        openFileDialog.Filter = "视频和音频|*.mp4;*.mkv;*.mov;*.avi;*.wmv;*.flv;*.webm;*.m4v;*.mpeg;*.mpg;*.ts;*.m2ts;*.3gp;*.mp3;*.m4a;*.aac;*.flac;*.wav;*.ogg;*.opus;*.wma|所有文件|*.*";
 
         ConfigureTrayIcon();
         FormClosing += HandleFormClosing;
@@ -308,8 +309,9 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
             ColumnCount = 1,
-            RowCount = 8
+            RowCount = 9
         };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -348,7 +350,8 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true,
-            Margin = new Padding(0, 8, 0, 8)
+            Margin = new Padding(0, 8, 0, 8),
+            TabIndex = 1
         };
         var modeLabel = new Label
         {
@@ -379,6 +382,43 @@ public sealed class MainForm : Form
         };
         modePanel.Controls.Add(modeLabel);
         modePanel.Controls.Add(processingMode);
+
+        var noteContentPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0, 0, 0, 8),
+            TabIndex = 2
+        };
+        var noteContentLabel = new Label
+        {
+            Text = "图文下载内容(&I)",
+            AutoSize = true,
+            AccessibleName = "图文下载内容标签",
+            Margin = new Padding(0, 6, 8, 0)
+        };
+        douyinNoteContent.DropDownStyle = ComboBoxStyle.DropDownList;
+        douyinNoteContent.AccessibleName = "图文下载内容";
+        douyinNoteContent.AccessibleDescription = "只对抖音图文作品生效；选择仅下载音频或下载图片和音频，在此处按 Enter 开始。";
+        douyinNoteContent.Items.AddRange([
+            "仅下载音频",
+            "下载图片和音频"
+        ]);
+        douyinNoteContent.SelectedIndex = 0;
+        douyinNoteContent.TabIndex = 2;
+        douyinNoteContent.Width = 300;
+        douyinNoteContent.KeyDown += (_, eventArgs) =>
+        {
+            if (eventArgs.KeyCode == Keys.Enter)
+            {
+                eventArgs.SuppressKeyPress = true;
+                StartCurrentInput();
+            }
+        };
+        noteContentPanel.Controls.Add(noteContentLabel);
+        noteContentPanel.Controls.Add(douyinNoteContent);
 
         queueList.Dock = DockStyle.Fill;
         queueList.View = View.Details;
@@ -416,7 +456,7 @@ public sealed class MainForm : Form
 
         taskTabs.Dock = DockStyle.Fill;
         taskTabs.AccessibleName = "任务与状态页签";
-        taskTabs.TabIndex = 2;
+        taskTabs.TabIndex = 3;
         taskTabs.TabPages.Add(queuePage);
         taskTabs.TabPages.Add(statusPage);
 
@@ -472,11 +512,12 @@ public sealed class MainForm : Form
         layout.Controls.Add(linkLabel, 0, 0);
         layout.Controls.Add(linkInput, 0, 1);
         layout.Controls.Add(modePanel, 0, 2);
-        layout.Controls.Add(taskTabs, 0, 3);
-        layout.Controls.Add(statusLabel, 0, 4);
-        layout.Controls.Add(progressBar, 0, 5);
-        layout.Controls.Add(buttonPanel, 0, 6);
-        layout.Controls.Add(privacyLabel, 0, 7);
+        layout.Controls.Add(noteContentPanel, 0, 3);
+        layout.Controls.Add(taskTabs, 0, 4);
+        layout.Controls.Add(statusLabel, 0, 5);
+        layout.Controls.Add(progressBar, 0, 6);
+        layout.Controls.Add(buttonPanel, 0, 7);
+        layout.Controls.Add(privacyLabel, 0, 8);
         return layout;
     }
 
@@ -686,7 +727,10 @@ public sealed class MainForm : Form
                 {
                     text = input,
                     interactive_douyin_login = douyinLoginItem.Checked,
-                    quality_preference = qualityPreference
+                    quality_preference = qualityPreference,
+                    douyin_note_content = douyinNoteContent.SelectedIndex == 1
+                        ? "images_and_audio"
+                        : "audio_only"
                 },
                 batchCancellation.Token);
             outcome = await CompleteDownloadProtocolAsync(
@@ -833,10 +877,23 @@ public sealed class MainForm : Form
                 var failed = response.Payload.TryGetProperty("failed", out var failedElement)
                     ? failedElement.GetInt32()
                     : 0;
+                var partialSuccess = response.Payload.TryGetProperty("partial_success", out var partialElement) &&
+                    partialElement.ValueKind == System.Text.Json.JsonValueKind.True;
+                var warnings = response.Payload.TryGetProperty("warnings", out var warningsElement)
+                    ? warningsElement.EnumerateArray()
+                        .Select(item => item.GetString())
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Cast<string>()
+                        .ToArray()
+                    : [];
+                var resultSummary = partialSuccess
+                    ? $"下载部分成功：已保留 {paths.Length} 个成功文件。{string.Join("；", warnings)}"
+                    : $"下载结束：成功 {succeeded} 个，跳过 {skipped} 个，失败 {failed} 个。源下载文件保持不变。";
                 return new DownloadProtocolOutcome(
                     paths,
                     wasBatch,
-                    $"下载结束：成功 {succeeded} 个，跳过 {skipped} 个，失败 {failed} 个。源下载文件保持不变。");
+                    resultSummary,
+                    partialSuccess);
             }
 
             var operationId = response.Payload.GetProperty("operation_id").GetString() ?? string.Empty;
@@ -964,7 +1021,11 @@ public sealed class MainForm : Form
 
         if (processable.Length == 0)
         {
-            ReportStatus("下载成功，但结果中没有可转换的视频或可识别的 MP3；文件已保留。", true);
+            ReportStatus(
+                outcome.IsPartialSuccess
+                    ? outcome.Summary
+                    : "下载成功，但结果中没有可转换的视频或可识别的 MP3；文件已保留。",
+                true);
             return;
         }
 
@@ -983,9 +1044,12 @@ public sealed class MainForm : Form
         queueList.Items.Clear();
         foreach (var plan in processable)
         {
-            var kind = plan.Action == DownloadedMediaAction.UseExistingMp3
-                ? MediaKind.Mp3
-                : MediaKind.Video;
+            var kind = plan.Action switch
+            {
+                DownloadedMediaAction.UseExistingMp3 => MediaKind.Mp3,
+                DownloadedMediaAction.ConvertAudio => MediaKind.Audio,
+                _ => MediaKind.Video
+            };
             queueList.Items.Add(CreateQueueRow(new QueueItem(plan.Path, kind)));
         }
 
@@ -1006,6 +1070,12 @@ public sealed class MainForm : Form
         {
             await StartLocalBatchAsync(decision);
         }
+        if (outcome.IsPartialSuccess)
+        {
+            resultText.AppendText(Environment.NewLine + Environment.NewLine +
+                "下载阶段：" + outcome.Summary);
+            ReportStatus(outcome.Summary, true);
+        }
     }
 
     private static string ProcessingModeName(int index) => index switch
@@ -1019,7 +1089,8 @@ public sealed class MainForm : Form
     private sealed record DownloadProtocolOutcome(
         IReadOnlyList<string> Paths,
         bool WasBatch,
-        string Summary);
+        string Summary,
+        bool IsPartialSuccess = false);
 
     private async Task<FeichuanWorkerClient> EnsureWorkerClientAsync(CancellationToken cancellationToken)
     {
@@ -1464,6 +1535,10 @@ public sealed class MainForm : Form
         if (processingMode.Items.Count > 0)
         {
             processingMode.SelectedIndex = 0;
+        }
+        if (douyinNoteContent.Items.Count > 0)
+        {
+            douyinNoteContent.SelectedIndex = 0;
         }
     }
 

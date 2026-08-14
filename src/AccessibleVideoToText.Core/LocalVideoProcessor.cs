@@ -70,17 +70,17 @@ public sealed class LocalVideoProcessor
         item.Stage = JobStage.Probing;
         item.StepDetail = "正在检查媒体格式、时长和第一条音轨";
         var probe = await mediaProbe.ProbeAsync(item.SourcePath, cancellationToken).ConfigureAwait(false);
-        if (!probe.HasVideo)
+        if (!probe.HasVideo && item.Kind == MediaKind.Video)
         {
-            throw new InvalidDataException("文件不是可解码的视频。第一版只有现有 MP3 可以直接转文字。 ");
+            throw new InvalidDataException("文件不是可解码的视频。 ");
         }
 
         if (!probe.HasAudio)
         {
-            throw new InvalidDataException("视频没有可用音轨，无法生成 MP3。 ");
+            throw new InvalidDataException("媒体没有可用音轨，无法生成 MP3。 ");
         }
 
-        item.Kind = MediaKind.Video;
+        item.Kind = probe.HasVideo ? MediaKind.Video : MediaKind.Audio;
         item.Stage = JobStage.ConvertingMp3;
         item.StepDetail = probe.AudioStreamCount > 1
             ? $"正在转换第一条音轨；检测到 {probe.AudioStreamCount} 条音轨"

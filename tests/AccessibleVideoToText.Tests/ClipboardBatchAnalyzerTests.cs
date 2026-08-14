@@ -20,20 +20,22 @@ public sealed class ClipboardBatchAnalyzerTests
         var inspector = new FakePathInspector(
             @"D:\媒体\一.mp4",
             @"D:\媒体\二.mp3",
+            @"D:\媒体\背景.m4a",
             @"D:\媒体\三.custom");
         var analyzer = new ClipboardBatchAnalyzer(inspector);
 
         var result = analyzer.Analyze([
             @"D:\媒体\一.mp4",
             @"D:\媒体\二.mp3",
+            @"D:\媒体\背景.m4a",
             @"D:\媒体\三.custom"]);
 
         Assert.IsFalse(result.RejectedForLimit);
         CollectionAssert.AreEqual(
-            new[] { "一.mp4", "二.mp3", "三.custom" },
+            new[] { "一.mp4", "二.mp3", "背景.m4a", "三.custom" },
             result.Accepted.Select(item => item.FileName).ToArray());
         CollectionAssert.AreEqual(
-            new[] { MediaKind.Video, MediaKind.Mp3, MediaKind.ProbeCandidate },
+            new[] { MediaKind.Video, MediaKind.Mp3, MediaKind.Audio, MediaKind.ProbeCandidate },
             result.Accepted.Select(item => item.Kind).ToArray());
     }
 

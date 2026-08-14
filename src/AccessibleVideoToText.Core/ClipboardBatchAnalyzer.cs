@@ -35,6 +35,11 @@ public sealed class ClipboardBatchAnalyzer
         ".mpeg", ".mpg", ".ts", ".m2ts", ".3gp"
     };
 
+    private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus", ".wma"
+    };
+
     private static readonly HashSet<string> KnownNonMediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff",
@@ -98,9 +103,11 @@ public sealed class ClipboardBatchAnalyzer
 
             var kind = extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
                 ? MediaKind.Mp3
-                : VideoExtensions.Contains(extension)
-                    ? MediaKind.Video
-                    : MediaKind.ProbeCandidate;
+                : AudioExtensions.Contains(extension)
+                    ? MediaKind.Audio
+                    : VideoExtensions.Contains(extension)
+                        ? MediaKind.Video
+                        : MediaKind.ProbeCandidate;
 
             accepted.Add(new QueueItem(fullPath, kind));
         }
@@ -112,9 +119,9 @@ public sealed class ClipboardBatchAnalyzer
         }
 
         var videos = accepted.Count(item => item.Kind is MediaKind.Video or MediaKind.ProbeCandidate);
+        var audioFiles = accepted.Count(item => item.Kind == MediaKind.Audio);
         var mp3Files = accepted.Count(item => item.Kind == MediaKind.Mp3);
-        var acceptedSummary = $"已读取视频或待探测媒体 {videos} 个，MP3 {mp3Files} 个，跳过 {skippedCount} 个，重复 {duplicateCount} 个。";
+        var acceptedSummary = $"已读取视频或待探测媒体 {videos} 个，音频 {audioFiles} 个，MP3 {mp3Files} 个，跳过 {skippedCount} 个，重复 {duplicateCount} 个。";
         return new ClipboardBatchResult(accepted, duplicateCount, skippedCount, false, acceptedSummary);
     }
 }
-
