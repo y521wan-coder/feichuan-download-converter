@@ -360,14 +360,14 @@ class WorkerService:
             message = str(exc)
             if "取消" in message:
                 raise ProtocolError("direct_link_cancelled", "直连解析已取消。") from exc
-            if "只支持" in message or "多个条目" in message:
+            if "只支持" in message or "多个条目" in message or "不支持直播" in message:
                 raise ProtocolError(
                     "direct_link_not_single",
-                    "获取解析直连只支持单视频，不支持主页、合集、频道、播放列表、直播或图文。",
+                    "获取解析直连只支持单视频或单条抖音图文，不支持主页、合集、频道、播放列表或直播。",
                 ) from exc
             raise ProtocolError(
                 "direct_link_failed",
-                "没有解析到可复制的单视频直连，请确认链接仍然有效后重试。",
+                "没有解析到可复制的作品直连，请确认链接仍然有效后重试。",
             ) from exc
 
         try:

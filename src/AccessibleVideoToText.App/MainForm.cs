@@ -792,8 +792,8 @@ public sealed class MainForm : Form
         batchCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         UpdateButtons();
         UpdateTrayStatus("正在解析直连");
-        SetCurrentTaskProgress("正在解析单视频直连", null);
-        ReportStatus("正在解析单视频直连；不会下载媒体文件。", false);
+        SetCurrentTaskProgress("正在解析作品直连", null);
+        ReportStatus("正在解析作品直连；不会下载媒体文件。", false);
         try
         {
             var client = await EnsureWorkerClientAsync(batchCancellation.Token);
@@ -818,7 +818,7 @@ public sealed class MainForm : Form
             }
 
             var detail = mediaKind == "audio"
-                ? "原站没有可用的音画合一直连，已按设置复制最佳音频直连。"
+                ? "已复制最佳音频直连。"
                 : "已复制最佳音画合一直连。";
             var summary = $"解析成功，直连已复制到系统剪贴板。{detail}直连可能短期失效，请及时使用。";
             resultText.Text = summary;

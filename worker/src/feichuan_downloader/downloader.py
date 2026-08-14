@@ -424,6 +424,7 @@ class Downloader:
         self,
         url: str,
         *,
+        require_audio_only: bool = False,
         cancel_event: threading.Event | None = None,
         on_line: LineCallback | None = None,
     ) -> DirectLinkResult:
@@ -451,11 +452,12 @@ class Downloader:
             "--encoding",
             "utf-8",
             "-f",
-            "b/bv*+ba",
+            "bestaudio/best" if require_audio_only else "b/bv*+ba",
             url,
         ]
-        self._emit("正在解析单视频直连；不会下载媒体文件……", on_line)
-        self.logger.info("开始解析单视频直连 %s", safe_url_for_log(url))
+        target_name = "图文背景音频" if require_audio_only else "单视频"
+        self._emit(f"正在解析{target_name}直连；不会下载媒体文件……", on_line)
+        self.logger.info("开始解析%s直连 %s", target_name, safe_url_for_log(url))
         process: subprocess.Popen[bytes] | None = None
         stdout = b""
         stderr = b""
@@ -499,6 +501,7 @@ class Downloader:
                 try:
                     direct_url, media_kind = DouyinCapture().resolve_direct_link(
                         url,
+                        require_audio_only=require_audio_only,
                         on_line=on_line,
                         cancel_event=cancel_event,
                     )
@@ -507,33 +510,44 @@ class Downloader:
                     pass
             diagnostics = stderr.decode("utf-8", errors="replace").splitlines()
             reason = _safe_line(next((line for line in reversed(diagnostics) if line.strip()), ""))
-            raise DownloadError(f"无法解析单视频直连：{reason or '下载核心返回错误'}")
+            raise DownloadError(f"无法解析{target_name}直连：{reason or '下载核心返回错误'}")
         try:
             payload = json.loads(stdout.decode("utf-8", errors="strict").lstrip("\ufeff").strip())
         except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-            raise DownloadError("无法解析单视频直连：下载核心返回的数据格式无效。") from exc
+            raise DownloadError(f"无法解析{target_name}直连：下载核心返回的数据格式无效。") from exc
         if not isinstance(payload, Mapping):
-            raise DownloadError("无法解析单视频直连：下载核心返回的数据格式无效。")
+            raise DownloadError(f"无法解析{target_name}直连：下载核心返回的数据格式无效。")
 
         try:
-            resolved = self._select_direct_link(payload)
+            resolved = self._select_direct_link(
+                payload,
+                require_audio_only=require_audio_only,
+            )
         except DownloadError:
             if not is_douyin_url(url):
                 raise
             try:
                 direct_url, media_kind = DouyinCapture().resolve_direct_link(
                     url,
+                    require_audio_only=require_audio_only,
                     on_line=on_line,
                     cancel_event=cancel_event,
                 )
                 resolved = DirectLinkResult(direct_url, media_kind)
             except Exception as exc:
+                if require_audio_only:
+                    raise DownloadError("当前抖音图文没有可复制的背景音频直连。") from exc
                 raise DownloadError("当前单视频没有可复制的音画合一直连或音频直连。") from exc
-        self.logger.info("单视频直连解析完成：类型=%s，地址未记录", resolved.media_kind)
+        self.logger.info("%s直连解析完成：类型=%s，地址未记录", target_name, resolved.media_kind)
         return resolved
 
     @classmethod
-    def _select_direct_link(cls, payload: Mapping[str, Any]) -> DirectLinkResult:
+    def _select_direct_link(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        require_audio_only: bool = False,
+    ) -> DirectLinkResult:
         live_status = str(payload.get("live_status") or "").strip().lower()
         if payload.get("is_live") is True or live_status in {"is_live", "is_upcoming"}:
             raise DownloadError("获取解析直连不支持直播。")
@@ -554,18 +568,19 @@ class Downloader:
         if not selected:
             selected.append(payload)
 
-        combined = [item for item in selected if cls._has_video(item) and cls._has_audio(item)]
-        if not combined:
-            formats = payload.get("formats")
-            if isinstance(formats, list):
-                combined = [
-                    item
-                    for item in formats
-                    if isinstance(item, Mapping) and cls._has_video(item) and cls._has_audio(item)
-                ]
-        candidate = cls._best_direct_candidate(combined)
-        if candidate is not None:
-            return DirectLinkResult(candidate, "combined")
+        if not require_audio_only:
+            combined = [item for item in selected if cls._has_video(item) and cls._has_audio(item)]
+            if not combined:
+                formats = payload.get("formats")
+                if isinstance(formats, list):
+                    combined = [
+                        item
+                        for item in formats
+                        if isinstance(item, Mapping) and cls._has_video(item) and cls._has_audio(item)
+                    ]
+            candidate = cls._best_direct_candidate(combined)
+            if candidate is not None:
+                return DirectLinkResult(candidate, "combined")
 
         audio = [item for item in selected if cls._has_audio(item) and not cls._has_video(item)]
         if not audio:
@@ -579,6 +594,8 @@ class Downloader:
         candidate = cls._best_direct_candidate(audio)
         if candidate is not None:
             return DirectLinkResult(candidate, "audio")
+        if require_audio_only:
+            raise DownloadError("当前抖音图文没有可复制的背景音频直连。")
         raise DownloadError("当前单视频没有可复制的音画合一直连或音频直连。")
 
     @staticmethod

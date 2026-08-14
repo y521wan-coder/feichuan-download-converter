@@ -135,6 +135,8 @@ class DouyinCapture:
     def resolve_direct_link(
         self,
         url: str,
+        *,
+        require_audio_only: bool = False,
         on_line: LineCallback | None = None,
         cancel_event: Any = None,
     ) -> tuple[str, str]:
@@ -164,6 +166,21 @@ class DouyinCapture:
             if not media:
                 raise RuntimeError("页面中没有发现可复制的媒体直连。")
 
+            return self._select_direct_candidate(
+                media,
+                require_audio_only=require_audio_only,
+            )
+        finally:
+            session.close()
+
+    @classmethod
+    def _select_direct_candidate(
+        cls,
+        media: list[dict[str, Any]],
+        *,
+        require_audio_only: bool = False,
+    ) -> tuple[str, str]:
+        if not require_audio_only:
             combined = [
                 item
                 for item in media
@@ -171,19 +188,19 @@ class DouyinCapture:
                 or "mpegurl" in str(item.get("mime") or "").lower()
             ]
             if combined:
-                selected = self._sort_candidates(combined)[0]
+                selected = cls._sort_candidates(combined)[0]
                 return str(selected["url"]), "combined"
 
-            audio = self._find_audio_candidate(media)
-            if audio is not None:
-                return str(audio["url"]), "audio"
+        audio = cls._find_audio_candidate(media)
+        if audio is not None:
+            return str(audio["url"]), "audio"
 
-            ordered = self._sort_candidates(media)
-            if len(ordered) == 1:
-                return str(ordered[0]["url"]), "combined"
-            raise RuntimeError("页面返回了无法可靠区分的音视频分轨，未复制可能错误的直连。")
-        finally:
-            session.close()
+        if require_audio_only:
+            raise RuntimeError("页面中没有发现可复制的图文背景音频直连。")
+        ordered = cls._sort_candidates(media)
+        if len(ordered) == 1:
+            return str(ordered[0]["url"]), "combined"
+        raise RuntimeError("页面返回了无法可靠区分的音视频分轨，未复制可能错误的直连。")
 
     @staticmethod
     def _close_session_async(session: ChromiumSession) -> None:

@@ -314,7 +314,7 @@ public sealed class WinFormsAccessibilityBaselineTests
                  {
                      "Ctrl+V", "只下载", "下载后转换为 MP3", "下载、转换 MP3 并生成 TXT",
                      "图文下载内容", "下载图片和音频", "M4A",
-                     "获取解析直连", "系统剪贴板", "直连可能短期失效",
+                     "获取解析直连", "背景音频直连", "系统剪贴板", "直连可能短期失效",
                      "抖音专用登录", "小键盘 8", "DPAPI CurrentUser", "每月 10 小时", "COS"
                  })
         {

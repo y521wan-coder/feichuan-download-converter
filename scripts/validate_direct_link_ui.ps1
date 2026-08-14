@@ -2,7 +2,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Executable,
-    [string]$ShareText = ""
+    [string]$ShareText = "",
+    [ValidateSet("StartButton", "ModeEnter")]
+    [string]$Trigger = "StartButton"
 )
 
 Set-StrictMode -Version Latest
@@ -166,8 +168,15 @@ try {
         0x014E,
         [IntPtr]1,
         [IntPtr]::Zero) | Out-Null
-    $start.GetCurrentPattern(
-        [System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    if ($Trigger -eq "ModeEnter") {
+        $combo.SetFocus()
+        Start-Sleep -Milliseconds 100
+        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    }
+    else {
+        $start.GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    }
 
     $taskDeadline = if ($isLiveAcceptance) {
         [DateTime]::UtcNow.AddMinutes(3)
@@ -260,7 +269,7 @@ try {
             Write-Output (
                 "Direct-link live acceptance passed; " +
                 "http_status=$statusCode; content_type=$contentType; " +
-                "startup_focus_observed=$startupFocusObserved.")
+                "trigger=$Trigger; startup_focus_observed=$startupFocusObserved.")
         }
         finally {
             $direct = $null
@@ -268,7 +277,9 @@ try {
         }
     }
     else {
-        Write-Output "Direct-link installed UIA passed; startup_focus_observed=$startupFocusObserved."
+        Write-Output (
+            "Direct-link installed UIA passed; trigger=$Trigger; " +
+            "startup_focus_observed=$startupFocusObserved.")
     }
 }
 finally {

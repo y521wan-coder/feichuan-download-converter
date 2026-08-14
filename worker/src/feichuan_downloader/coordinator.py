@@ -282,7 +282,7 @@ class DownloadCoordinator:
         *,
         interactive_douyin_login: bool = False,
     ) -> DirectLinkResult:
-        """Resolve exactly one video and keep its direct URL in worker memory."""
+        """Resolve one supported work and keep its direct URL in worker memory."""
 
         source, url = self.classify(text)
         self._begin()
@@ -307,8 +307,9 @@ class DownloadCoordinator:
                 direct_path = urlsplit(url).path.lower().rstrip("/") + "/"
             except Exception:
                 direct_path = ""
-            if "/note/" in direct_path or "/live/" in direct_path:
-                raise CoordinatorError("获取解析直连只支持单视频，不支持直播或图文。")
+            if "/live/" in direct_path:
+                raise CoordinatorError("获取解析直连不支持直播。")
+            require_audio_only = "/note/" in direct_path
 
             downloader = self._new_downloader()
             with self._lock:
@@ -322,14 +323,16 @@ class DownloadCoordinator:
                 if inspection.is_playlist or inspection.count != 1:
                     raise CoordinatorError("获取解析直连只支持一个视频，当前页面包含多个条目。")
 
+            target_name = "图文背景音频" if require_audio_only else "单视频"
             self._emit(
                 DownloadEvent(
                     stage=DownloadStage.SCANNING,
-                    message="正在解析单视频直连；不会下载媒体文件。",
+                    message=f"正在解析{target_name}直连；不会下载媒体文件。",
                 )
             )
             result = downloader.resolve_direct_link(
                 url,
+                require_audio_only=require_audio_only,
                 cancel_event=self._cancel_event,
                 on_line=self.on_line,
             )

@@ -90,6 +90,33 @@ def check_split_copies_best_audio_only() -> None:
         result.clear_sensitive()
 
 
+def check_note_requires_standalone_audio() -> None:
+    result = Downloader._select_direct_link(
+        {
+            "requested_formats": [
+                {"url": SECRET_COMBINED, "vcodec": "h264", "acodec": "aac", "height": 1080},
+                {"url": SECRET_AUDIO, "vcodec": "none", "acodec": "aac", "abr": 192},
+            ]
+        },
+        require_audio_only=True,
+    )
+    try:
+        assert result.media_kind == "audio"
+        assert result.url == SECRET_AUDIO
+    finally:
+        result.clear_sensitive()
+
+    try:
+        Downloader._select_direct_link(
+            {"url": SECRET_COMBINED, "vcodec": "h264", "acodec": "aac"},
+            require_audio_only=True,
+        )
+    except DownloadError as exc:
+        assert "背景音频" in str(exc)
+    else:
+        raise AssertionError("combined media was accepted as a note audio direct link")
+
+
 def check_unsafe_or_video_only_is_rejected() -> None:
     for payload in (
         {"url": "file:///private/video.mp4", "vcodec": "h264", "acodec": "aac"},
@@ -104,7 +131,7 @@ def check_unsafe_or_video_only_is_rejected() -> None:
             raise AssertionError("unsafe or silent-only direct link was accepted")
 
 
-def check_coordinator_rejects_non_video_sources_before_resolution() -> None:
+def check_coordinator_routes_supported_single_sources() -> None:
     coordinator = DownloadCoordinator()
     try:
         coordinator.resolve_direct_link("https://www.youtube.com/playlist?list=PL_OFFLINE")
@@ -121,13 +148,56 @@ def check_coordinator_rejects_non_video_sources_before_resolution() -> None:
                 url="https://www.douyin.com/note/123456/",
             )
 
-    note = DownloadCoordinator(douyin_scanner_factory=NoteScanner)
+    class DirectDownloader:
+        def __init__(self) -> None:
+            self.require_audio_only: list[bool] = []
+
+        def resolve_direct_link(self, _url: str, **kwargs: object) -> DirectLinkResult:
+            self.require_audio_only.append(bool(kwargs.get("require_audio_only")))
+            return DirectLinkResult(SECRET_AUDIO, "audio")
+
+        def cancel(self) -> None:
+            return None
+
+    downloader = DirectDownloader()
+    note = DownloadCoordinator(
+        douyin_scanner_factory=NoteScanner,
+        downloader_factory=lambda: downloader,
+    )
+    result = note.resolve_direct_link("https://www.douyin.com/note/123456/")
     try:
-        note.resolve_direct_link("https://www.douyin.com/note/123456/")
-    except CoordinatorError as exc:
-        assert "图文" in str(exc)
+        assert result.media_kind == "audio"
+        assert downloader.require_audio_only == [True]
+    finally:
+        result.clear_sensitive()
+
+
+def check_browser_capture_requires_note_audio() -> None:
+    combined = {
+        "url": SECRET_COMBINED.replace(".mp4", ".m3u8"),
+        "mime": "application/vnd.apple.mpegurl",
+        "content_length": 500000,
+    }
+    audio = {
+        "url": SECRET_AUDIO,
+        "mime": "audio/mp4",
+        "content_length": 200000,
+    }
+    selected, media_kind = DouyinCapture._select_direct_candidate(
+        [combined, audio],
+        require_audio_only=True,
+    )
+    assert selected == SECRET_AUDIO and media_kind == "audio"
+
+    try:
+        DouyinCapture._select_direct_candidate(
+            [combined],
+            require_audio_only=True,
+        )
+    except RuntimeError as exc:
+        assert "背景音频" in str(exc)
     else:
-        raise AssertionError("Douyin note reached direct-link resolution")
+        raise AssertionError("browser capture accepted a combined note candidate")
 
 
 def check_douyin_mislabeled_audio_url_is_recognized() -> None:
@@ -225,8 +295,10 @@ def main() -> None:
     check_sensitive_result_redaction()
     check_combined_is_preferred_over_split()
     check_split_copies_best_audio_only()
+    check_note_requires_standalone_audio()
     check_unsafe_or_video_only_is_rejected()
-    check_coordinator_rejects_non_video_sources_before_resolution()
+    check_coordinator_routes_supported_single_sources()
+    check_browser_capture_requires_note_audio()
     check_douyin_mislabeled_audio_url_is_recognized()
     check_protocol_copies_without_returning_url()
     check_clipboard_failure_is_safe()
