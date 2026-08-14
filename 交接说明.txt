@@ -167,3 +167,95 @@ Git 分支：main
 5. 当前安装版和 D 盘根目录安装包均已包含图文 RSC 兜底，版本仍为 1.0。除非用户明确提出新的
    修改，不要恢复旧 worker、不要重新覆盖安装、不要生成新安装包。
 6. 服务器更新发布继续暂停。
+
+飞船下载转换工具 1.0 抖音图文背景音频直连修复最终交接说明
+
+更新时间：2026-08-14 16:42（北京时间）
+开发目录：D:\FeichuanDownloadConverterDev
+Git 分支：main
+功能提交：0e04a07 fix: copy Douyin note audio direct links
+产品显示版本：1.0
+程序集/文件版本：1.0.0.0
+
+一、本轮结论与行为
+
+1. 用户指定的抖音分享文本解析为单条 `/note/` 图文作品。此前“获取解析直连”失败不是键盘、
+   开始按钮或剪贴板问题，而是协调器明确拒绝图文路由。
+2. 当前源码、候选版和最终安装版均已修复：选择“获取解析直连”后，可把该图文的独立背景音频
+   直连复制到系统剪贴板，不下载或创建 WebP、MP3、`.part` 或其它媒体文件。
+3. 图文直连固定只选背景音频，不受“图文下载内容”组合框影响；普通抖音视频仍优先复制最佳
+   音画合一直连，只有分轨时复制最佳音频直连。
+4. 用户完成真实操作后明确确认成功，并授权覆盖安装、更新交接和生成 D 盘安装包。
+
+二、实现与安全边界
+
+1. `worker/src/feichuan_downloader/coordinator.py` 在短链识别为 `/note/` 后允许进入直连管线，并
+   传递强制仅音频标志；主页、合集、频道、播放列表和直播继续拒绝。
+2. `worker/src/feichuan_downloader/downloader.py` 的图文直连使用 `bestaudio/best`，只从 yt-dlp
+   返回中选择独立音频；若只有音画合一或视频候选则不作为图文音频返回。
+3. `worker/src/feichuan_downloader/douyin_capture.py` 的浏览器兜底同样强制音频选择，即使同时
+   捕获 HLS 或视频流也只返回已识别的背景音频候选。
+4. JSON Lines 协议仍为版本 1，`direct_link.copy` 结构与能力名称不变。签名直连只在 worker
+   内存和当前 Windows 用户剪贴板中短暂存在，未进入 JSON、应用日志、源码、测试或磁盘。
+5. 使用说明、README、合并计划、直连调研和 UI 提示均已同步；版本、固定 AppId、许可证载荷、
+   DPAPI 数据目录和服务器更新边界没有改变。
+
+三、测试与真实验收
+
+1. Python 离线 smoke：19/19 通过。
+2. .NET Release：51/51 通过，0 失败、0 跳过。
+3. 新增离线覆盖：图文路由放行并传递强制音频、独立音频优先、音画合一候选拒绝、浏览器抓流
+   兜底强制音频、普通视频规则回归、敏感结果不可序列化和协议不返回直连。
+4. 源码真实解析：媒体类型 audio，内存网络探测 HTTP 206、Content-Type audio/mpeg。
+5. 候选 UIA：开始按钮安全拒绝回归通过；处理模式组合框回车的真实图文直连验收通过，剪贴板
+   更新且网络探测为 HTTP 206、audio/mpeg。
+6. 最终安装版 UIA：开始按钮真实图文直连验收再次通过，剪贴板更新且网络探测为 HTTP 206、
+   audio/mpeg。自动化启动焦点观测仍受前台窗口状态影响为 false，构造函数焦点规则未改变。
+7. 验收后 D 盘根目录 `.part` 为 0；应用日志敏感匹配为 0；主程序、worker、FFmpeg、ffprobe
+   和 yt-dlp 残留进程均为 0。
+
+四、构建、覆盖安装与审计
+
+1. 构建脚本：D:\FeichuanDownloadConverterDev\scripts\build_candidate.ps1
+2. 候选应用目录：D:\FeichuanDownloadConverterDev\artifacts\candidate\app
+3. 覆盖前备份：
+   D:\FeichuanDownloadConverterDev\artifacts\installer-upgrade-20260814-note-audio-direct-fix
+4. 覆盖安装返回码 0；安装包中的 300 个静态载荷与安装目录逐文件核对为 0 缺失、0 不匹配。
+5. 当前安装目录：C:\Users\apple007\AppData\Local\Programs\飞船下载工具
+6. 当前桌面快捷方式：C:\Users\apple007\Desktop\飞船下载转换工具.lnk，目标为当前安装目录的
+   `飞船下载转换工具.exe`。
+7. 当前只有 1 个“飞船下载转换工具 1.0”卸载项，安装位置正确。
+
+五、当前关键安装文件
+
+1. 飞船下载转换工具.exe：162816 字节，SHA-256：
+   8132E6324A98E17C6C8D6F91D754604EF0F731C0D1388E6C1859D7F4C49ADA00
+2. 飞船下载转换工具.dll：131584 字节，SHA-256：
+   E839152F8BEF23BD3B0C6C457A8A9590BD2A2E2D4B821A442C52BC942E1C98BC
+3. AccessibleVideoToText.Core.dll：73216 字节，SHA-256：
+   D121CD48FB22B94F6E968CCD17B63F64C0E18F095DAC3602F03C3087B911EC69
+4. feichuan-worker.exe：18756261 字节，SHA-256：
+   18E76819EC4A4867305ECB501000E49896782A6C1DFFA2D4B40D5C2073F91939
+5. 使用说明.txt：8628 字节，SHA-256：
+   C75FF49D467013ED32BA781E3064E044155E42C7555F1734CD0038B896CA67BA
+
+六、最终安装包
+
+1. 项目安装包：D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe
+2. 项目审计哈希：D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe.sha256
+3. D 盘最终交付：D:\飞船下载转换工具-Setup-1.0.exe
+4. 文件大小：148154650 字节。
+5. SHA-256：188EDE5C647F88AF2C76F1E1AE85B3A97A356585C0A962EA8E5D6A45ABCEEEC3
+6. 项目 release 与 D 盘根目录 EXE 完全一致；D 盘根目录没有复制 `.sha256`。
+7. 安装包 Authenticode 状态为 NotSigned，Windows 可能提示“未知发布者”。
+
+七、后续接续
+
+1. `artifacts/` 未跟踪属于预期，其中包含候选、真实验收证据和恢复备份；不得删除、移动或使用
+   `git add -A` 提交。
+2. D 盘根目录的用户作品 WebP 继续永久保留；两个旧项目继续只读。
+3. 新会话先完整阅读 AGENTS.md、合并开发计划和本文件最后一个区块，再运行 `git status` 与
+   `git log -3 --oneline`。
+4. 当前安装版和 D 盘安装包已经包含图文背景音频直连修复。除非用户明确提出新修改，不要恢复
+   旧 worker、不要重复覆盖安装或重新生成安装包。
+5. 没有生成、上传或发布服务器更新包；服务器更新发布继续暂停。
