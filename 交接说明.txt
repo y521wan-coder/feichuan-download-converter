@@ -1,566 +1,169 @@
-==================== 交接区块开始 ====================
-日期时间：2026-08-10 07:24（北京时间）
-当前软件版本：1.0-dev（合并开发刚开始，尚无合并候选版）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支及提交：独立仓库初始化前，暂无提交。
+飞船下载转换工具 1.0 最终交接说明
 
-本区块目的：
-这是“飞船下载转换工具”合并项目的总交接文件，作用与两个未合并软件原来的交接说明相同。
-以后只在本文件末尾追加，不改写历史。两个旧项目的原交接副本在 docs\handoff，旧项目原目录
-保持不变。
-
-已完成内容：
-1. 按用户新增要求创建 D 盘英文目录 D:\FeichuanDownloadConverterDev。
-2. 从 D:\AccessibleVideoToMp3 导入全部受版本控制的 WinForms/Core/Infrastructure/测试、文档、
-   许可证和开发日志，并带入仓库本地 .NET 10 SDK/NuGet 工具缓存，排除旧 bin/obj/artifacts。
-3. 从 D:\飞船下载工具开发 导入 Python 下载源码、测试、构建脚本、安装定义、assets、许可证、
-   固定 FFmpeg/ffprobe、yt-dlp、历史日志和交接资料，排除旧 build/dist/release 与 pycache。
-4. 在 docs\handoff 保存两套旧交接说明副本；建立根目录 README、项目规则、合并计划、开发日志、
-   release 目录和隐私/构建忽略规则。
-5. 明确服务器更新发布暂停；旧项目目录不修改；旧可再生产物继续留在原目录。
-
-正在处理内容：
-1. 生成导入清单、工具版本与 SHA-256，初始化独立 Git 仓库并建立导入基线提交。
-2. 从新目录运行下载 17 组离线 smoke 和转换 38 项测试，验证导入未破坏基线。
-3. 建立版本化 JSON Lines 协议、不可见 Python worker 和 .NET worker 客户端的最小可测试骨架。
-
-未完成内容和下一步准确操作：
-1. 完成两套基线测试和秘密扫描；任何失败先记录，不修改两个旧项目。
-2. 把转换项目产品/程序集/解决方案改为 1.0 的统一名称，保留可测试的 Core/Infrastructure。
-3. 将 Python GUI 与下载协调器解耦，通过 JSON Lines 暴露握手、扫描、品质、下载、取消和状态。
-4. 实现统一 WinForms 主窗口、三个模式、剪贴板分流、任务页签和完整生命周期。
-5. 补齐协议、流水线、安全、无障碍和安装升级测试，再构建本地候选安装包。
-6. 只有全部必测项通过后才能复制 D:\飞船下载转换工具-Setup-1.0.exe；不上传服务器。
-
-当前构建目录：尚未生成合并项目构建。
-当前安装目录/快捷方式：沿用旧安装作为验收基线；尚未安装合并候选，也未改快捷方式。
-
-测试结果：
-待运行：下载 17 组离线 smoke；转换 Release 38 项；新仓库秘密扫描。
-失败：尚无已执行失败项。
-
-依赖与许可证：
-1. .NET SDK 10.0.302，仓库本地工具，未修改系统 SDK。
-2. FFMpegCore 5.4.0（MIT）、TencentCloudSDK.Asr 3.0.1442（Apache-2.0）、
-   Tencent.QCloud.Cos.Sdk 5.4.51（MIT 边界待最终复核）。
-3. worker 固定 FFmpeg/ffprobe 版本 n8.1.2-22-g94138f6973-20260718；配置未启用 GPL，最终清单和
-   LGPL 3 许可证仍需复核并记录哈希。
-
-安全与已知限制：
-1. 不读取或迁移 credentials.dat，不在聊天/日志/协议中记录密钥、Cookie、签名 URL 或识别正文。
-2. 当前只有导入基线，没有统一 UI、worker 协议、合并构建或安装包，不能称为测试候选版。
-3. 争渡、高对比度、缩放、真实云端和指定抖音一条龙均尚未验收。
-
-新会话可直接复制使用的接续说明：
-请进入 D:\FeichuanDownloadConverterDev，先完整阅读 AGENTS.md、
-docs\requirements\merge-development-plan.md 和根目录 交接说明.txt 最后一个区块。两个旧项目
-D:\飞船下载工具开发 与 D:\AccessibleVideoToMp3 只能作为稳定基线，禁止修改。先查看 Git 状态
-和 logs\merge-development 最新记录，继续当前未完成步骤；保持服务器更新发布暂停，不读取腾讯云
-凭据，不把密钥、Cookie、签名 URL、媒体令牌或识别正文写入协议/日志/聊天。全部必测项通过前不得
-把 1.0 安装包复制到 D 盘根目录。
-==================== 交接区块结束 ====================
-
-==================== 交接区块开始 ====================
-日期时间：2026-08-10 08:45（北京时间）
-当前软件版本：1.0（本地测试候选，真实一条龙验收通过）
+更新时间：2026-08-14 15:53（北京时间）
 开发目录：D:\FeichuanDownloadConverterDev
 Git 分支：main
-导入基线提交：a81a6cd chore: import download and conversion baselines
-合并实现提交：712f081 feat: merge downloader and converter into 1.0
+当前功能提交：b0664f2 feat: download Douyin note images and audio
+产品显示版本：1.0
+程序集/文件版本：1.0.0.0
 
-本区块结论：
-“飞船下载转换工具”1.0 的合并实现、构建、覆盖安装、自动测试和指定抖音真实验收已经完成。
-用户已确认安装版下载、上传、转换和 TXT 生成成功，并要求生成 D 盘最终安装包。服务器更新发布
-仍然暂停；两个旧项目 D:\飞船下载工具开发、D:\AccessibleVideoToMp3 全程没有修改。
+一、当前结论
 
-已完成的产品能力：
-1. .NET 10 WinForms 单一主窗口，产品显示版本 1.0，程序集/文件版本 1.0.0.0。
-2. 启动焦点固定在“下载链接或平台分享文本”；后接标准三选项组合框，任务结束复位“只下载”；
-   输入框和组合框 Enter 均可开始。
-3. Ctrl+V 按真实文本/FileDrop 格式分流，保留顺序、去重、100 项限制和原本地确认流程。
-4. 标准“任务队列”“状态与日志”页签；程序不自动切页签。普通最小化留在任务栏。
-5. 保留下载文件夹、品质、抖音专用登录/清除、软件/核心手动检查、帮助、打赏、费用确认、
-   DPAPI、腾讯云 COS/ASR、恢复任务和安全输出逻辑。
-6. 单链接按顶部模式自动衔接；批量下载完成后询问。视频转 MP3、已有 MP3 复用，图片和不支持
-   格式明确跳过；后续失败不删除下载源文件。
-7. Alt+O 打开当前结果目录。任务中关闭提供“转入托盘继续（默认）”“取消任务并退出”
-   “返回软件”；空闲/完成后关闭和 Alt+F4 直接退出，Cancel 禁用。
-8. Python 下载算法保留为独立 headless worker；JSON Lines 协议版本 1，扫描敏感对象只以临时
-   operation_id 引用。协议和诊断拒绝密钥、Cookie、签名地址和媒体令牌。
-9. 正常取消先通知协调器并轮询到真实空闲；5 秒内不能停止才终止整个 worker 进程树。
+1. 用户指定的抖音作品已经确认是 `/note/` 图文作品，源页面提供一张 2160×2880 的作品正文图片
+   和一条独立背景音频，不是把普通视频或封面误认为图文。
+2. 作品图片已经下载到 D 盘根目录并永久保留：文件名以“抖音图文_曲韵墨痕”开头、以
+   `_001.webp` 结尾。文件为有效 WebP，389206 字节，2160×2880，SHA-256：
+   8FC48959239DE9577675E16944B3D9C78E42CA80862CD53A6A65A11CEFB2A2A2。
+3. 软件已经修复并通过真实作品验收。当前安装版选择“只下载”和“下载图片和音频”后，可完整
+   得到 1 张 WebP 和 1 个 MP3，不再只有音频或返回图片部分失败。
+4. 已重新生成版本号不变的完整安装包、执行覆盖安装，并把同一安装包复制到 D 盘根目录。
+5. 本轮没有构建、上传或发布服务器更新包；服务器更新发布继续暂停。
 
-构建和安装位置：
-1. 解决方案：D:\FeichuanDownloadConverterDev\FeichuanDownloadConverter.slnx
-2. worker 构建：D:\FeichuanDownloadConverterDev\worker\dist\feichuan-worker.exe
-3. 主程序候选目录：D:\FeichuanDownloadConverterDev\artifacts\candidate\app
-4. 项目候选安装包：D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe
-5. 项目审计哈希：D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe.sha256
-6. 最终交付安装包：D:\飞船下载转换工具-Setup-1.0.exe
-7. 当前安装目录：C:\Users\apple007\AppData\Local\Programs\飞船下载工具
-8. 当前桌面快捷方式：C:\Users\apple007\Desktop\飞船下载转换工具.lnk
-9. 开始菜单：%APPDATA%\Microsoft\Windows\Start Menu\Programs\飞船下载转换工具
+二、失败根因与最终修复
 
-安装包审计：
-1. 文件大小：148122043 字节（约 141.26 MiB）。
-2. SHA-256：66E7EA54F8F3EF241B8A3C47F91393F292C8D074951C261E8013309A9C3F4301
-3. 项目 release 与 D 盘根目录 EXE 哈希完全一致；D 盘根目录没有 .sha256。
-4. 当前未做 Authenticode 签名，Windows 可能显示“未知发布者”；不得称为已签名版本。
-5. 固定 AppId：{1E97F30E-8634-4032-A5A2-715394D9A471}。覆盖 0.3.9 后只剩一个卸载项，
-   沿用旧安装目录；旧 EXE、旧桌面/开始菜单快捷方式已移除。
-6. 安装目录版本与校验清单共 299 项，安装后逐文件 SHA-256 复核为 0 不匹配。
+1. 修复前的当前安装版真实复现两次：每次只得到 1 个背景 MP3，图片为 0，任务返回部分成功，
+   非敏感警告为没有从作品详情响应中解析到图文原图。
+2. 下载目录设置、桌面快捷方式和安装文件哈希均正确，因此不是用户选项、保存位置或误开旧版。
+3. 抖音当前页面不再触发旧的作品详情 XHR。作品图片数据改由页面 RSC 数据流
+   `window.__pace_f` 提供，目标图片位于当前作品的 `aweme.detail.images`。
+4. `worker/src/feichuan_downloader/douyin_enumerator.py` 保留旧详情接口捕获，同时新增 RSC 兜底：
+   - 精确匹配短链解析后的当前作品 ID；
+   - 只读取当前作品的图片数组，不扫描页面全部 `<img>`；
+   - 避免把头像、二维码、推荐封面和界面图标作为作品图片；
+   - 优先使用 `downloadUrlList`，再回退 `urlList`；
+   - 继续复用既有 WebP 校验、`.part` 临时文件和原子提交管线。
+5. `worker/src/feichuan_downloader/coordinator.py` 在短链解析后统一识别 `/note/` 图文路由。
+6. `worker/src/feichuan_downloader/downloader.py` 增加显式仅音频选择。图文背景音频现在固定使用
+   `bestaudio/best`，不再根据图文页面网址的扩展名猜测媒体类型。
+7. JSON Lines 协议仍为版本 1；现有 `douyin_note_content` 只允许 `audio_only` 和
+   `images_and_audio`，worker 继续声明 `douyin.note.images` 能力。
+8. 分享文本、短链、图片直连、Cookie、请求头和媒体令牌只在运行内存中使用，没有进入源码、
+   测试、日志或本交接文件。
 
-测试结果：
-1. 导入基线：旧下载工具 17/17 离线 smoke 通过；旧转换项目 38/38 Release 测试通过。
-2. 最终合并测试：Python 离线 smoke 18/18；.NET Release 49/49；0 失败、0 跳过。
-3. worker：源码协议测试、崩溃、敏感字段、后台进度、协作取消、取消超时杀进程树通过；
-   PyInstaller EXE 的握手、task.status、shutdown 和 stderr=0 通过。
-4. 安装升级：一个卸载项；两套旧运行数据目录文件数保持不变；新快捷方式目标正确；旧 EXE
-   和旧快捷方式不存在；使用说明为 UTF-8 BOM、仅 CRLF。
-5. 安装版 UIA：主标题、主窗口无障碍名称、处理模式、任务页签可读；启动焦点为链接输入框；
-   空闲关闭后主 EXE 和 worker 残留进程均为 0。
-6. 完成状态回归：Cancel 禁用，空闲/已完成关闭不被拦截；任务中三选项关闭对话框默认托盘。
-7. 未做真实批量链接；批量由旧回归和新增模拟测试覆盖，符合计划。
+三、当前产品能力
 
-真实抖音一条龙验收：
-1. 仅通过覆盖安装后的软件运行用户给定完整分享文本；现有腾讯云凭据只由应用通过 DPAPI
-   CurrentUser 使用。测试没有读取 credentials.dat，没有输出密钥、签名 URL 或识别正文。
-2. 用户手动点击腾讯云上传确认，并明确反馈“成功了没问题”。自动脚本未记录到该按钮事件，
-   因而其事件标志显示 false；该标志是测试脚本局限，不代表产品失败，最终以用户确认和产物
-   技术核对为准。
-3. 验收目录保留 2 组编号的 MP4/MP3/TXT。两段 MP4 均同时含视频流和音频流；两段 MP3
-   均为 mp3、44100 Hz、双声道、192000 bps；两份 TXT 均非空并通过严格 UTF-8 解码。
-4. 无 .part 文件；两段下载源 MP4 的 SHA-256 相同，后续处理没有改变源内容；待恢复任务 0。
-5. 用户确认界面成功，未报告 COS 清理警告；本机没有遗留待恢复记录。识别正文未检查或记录。
-6. 验收前临时把下载目录改到项目 artifacts\acceptance\media，完成后已恢复为 D:\。
+1. 单一 .NET 10 WinForms 主窗口，处理模式仍为：
+   - 只下载；
+   - 下载后转换为 MP3；
+   - 下载、转换 MP3 并生成 TXT；
+   - 获取解析直连。
+2. “图文下载内容”标准组合框提供：
+   - 仅下载音频（默认）；
+   - 下载图片和音频。
+3. 两个组合框均支持 Enter 开始；任务结束恢复“只下载”和“仅下载音频”，Cancel 禁用，不抢
+   焦点、不自动切换页签。
+4. 单条抖音图文选择图片和音频时，图片和背景音频独立执行；一边失败时保留另一边并返回部分
+   成功，两边都失败才判定任务失败。
+5. 单条图文图片只保存为 WebP，不生成批量图文说明 TXT，不做 OCR，不做图片语音识别。
+6. 转 MP3 或转文字模式只处理背景音频；WebP 原图保持不变。
+7. M4A、AAC、FLAC、WAV、OGG、Opus、WMA 等常见纯音频可以进入 MP3 后处理。
+8. 抖音视频、主页、合集、YouTube、普通网站、本地文件、批量分流、任务队列、托盘、取消、
+   Alt+O、腾讯云 COS/ASR 和 DPAPI 数据目录保持原有行为。
+9. “获取解析直连”仍只处理支持的单视频，直连只存在于 worker 内存和系统剪贴板，不进入协议、
+   日志或磁盘。
 
-许可证和安全边界：
-1. 固定 FFmpeg/ffprobe：n8.1.2-22-g94138f6973-20260718，启用 version3，未启用 GPL/nonfree；
-   FFmpeg SHA-256 9203AD8B3940926730575C9EE0845B5FEDCA59EC39C1D3A6161F4F6417A07C1A；
-   ffprobe SHA-256 DDEC1E96B9E894DE942CEA9A8D5799F2D82AD80AD7483BA598FDDE54D5B40C49。
-2. yt-dlp 2026.07.04 SHA-256：
-   52FE3C26DCF71FBDC85B528589020BB0B8E383155CFA81B64DD447BBE35E24B8。
-3. 安装包携带统一 THIRD_PARTY_NOTICES.txt，以及 FFmpeg/LGPL、FFMpegCore/MIT、腾讯云 SDK
-   Apache-2.0/MIT 许可证文本。旧 GPL nightly 没有进入安装包。
-4. 兼容数据目录保持不变：%LOCALAPPDATA%\FeichuanDownloader 与
-   %LOCALAPPDATA%\AccessibleVideoToText；不迁移或解密。
-5. 软件更新和下载核心更新只允许用户手动检查。本次没有构建、复制或发布服务器更新包。
+四、自动测试与真实验收
 
-已知限制和以后可选工作：
-1. 当前是未签名本地测试候选；用户以后仍可用争渡朗读做主观验收。自动 WinForms/UIA、标准控件、
-   DPI AutoScale 和完成状态测试已通过，但高对比度、125%/150% 的人工视觉检查没有替代争渡验收。
-2. “只重试 TXT”“自选统一结果目录”“明确结束恢复状态”按计划不在本次合并范围。
-3. 不应删除 artifacts\acceptance\media 中的真实验收媒体；它们被 Git 忽略并留作本机证据。
-4. 服务器更新发布保持暂停，除非用户以后明确重新启用。
+1. Python 离线 smoke：19/19 通过。
+2. .NET Release：51/51 通过，0 失败、0 跳过。
+3. 新增覆盖：
+   - RSC 图文详情兜底与精确作品匹配；
+   - 图文短链路由；
+   - 图片和音频完整成功、单边部分成功；
+   - 显式 `bestaudio/best` 的真实 yt-dlp 参数；
+   - 协议默认值、非法值拒绝和能力声明；
+   - WinForms 组合框、Tab 顺序、复位和无障碍基线。
+4. worker 源码真实验收：1 张 WebP、1 个 MP3，完整成功，警告 0、`.part` 0。
+5. PyInstaller 候选 worker 真实验收：1 张 WebP、1 个 MP3，完整成功，警告 0、`.part` 0、
+   stderr 0。
+6. 直接替换内核后的安装版真实验收：1 张 WebP、1 个 MP3，完整成功。
+7. 最终完整安装包覆盖安装后的再次真实验收：
+   - 目录：
+     D:\FeichuanDownloadConverterDev\artifacts\acceptance\douyin-note-images-audio-installed-setup-20260814
+   - WebP：1 个，371366 字节，2160×2880；
+   - MP3：1 个，2110137 字节，mp3、44100 Hz、双声道、128000 bps；
+   - 部分成功 false、警告 0、`.part` 0、stderr 0、worker 退出码 0。
+8. 候选和最终安装版 UIA 均通过两个组合框、四个模式、Tab 顺序、直连安全拒绝、任务复位和
+   Cancel 禁用检查。自动化启动焦点观测受前台窗口状态影响为 false，构造函数焦点规则未改变。
+9. UIA SendKeys 偶发未前进属于测试窗口焦点波动；测试脚本现会显式重新聚焦处理模式组合框并
+   重试一次，没有改变产品交互。
+10. 最终主程序、worker、FFmpeg、ffprobe 和 yt-dlp 残留进程均为 0。
 
-新会话继续说明：
-进入 D:\FeichuanDownloadConverterDev，先完整阅读 AGENTS.md、
-docs\requirements\merge-development-plan.md 和本文件最后一个交接区块；再运行 git status、
-git log -3 --oneline，并查看 logs\merge-development 最新记录。两个旧项目只能作为稳定基线，
-禁止修改。不得读取或输出腾讯云凭据、Cookie、签名 URL、媒体令牌和识别正文。需要重建本地
-候选时运行 scripts\build_candidate.ps1；除非用户明确重新授权，禁止发布服务器更新包。
-==================== 交接区块结束 ====================
+五、构建、覆盖安装和当前安装状态
 
-==================== 交接区块开始 ====================
-日期时间：2026-08-11 12:42（北京时间）
-当前软件版本：1.0（当前安装版内核直接修复，未生成新安装包）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支：main
-修复提交：183d562 fix: harden long Douyin downloads and announce progress
+1. 构建脚本：D:\FeichuanDownloadConverterDev\scripts\build_candidate.ps1
+2. 候选应用目录：D:\FeichuanDownloadConverterDev\artifacts\candidate\app
+3. 候选静态文件共 301 个；其中构建后运行生成的 `logs\app.log` 不属于安装包。安装包中的 300 个
+   静态载荷与安装目录逐文件 SHA-256 核对为 0 缺失、0 不匹配。
+4. 覆盖安装使用固定 AppId：{1E97F30E-8634-4032-A5A2-715394D9A471}。
+5. 安装器返回码 0；覆盖前没有相关运行进程，因此无需实际使用用户授权的强制退出。
+6. 当前安装目录：C:\Users\apple007\AppData\Local\Programs\飞船下载工具
+7. 当前桌面快捷方式：C:\Users\apple007\Desktop\飞船下载转换工具.lnk
+8. 快捷方式目标：
+   C:\Users\apple007\AppData\Local\Programs\飞船下载工具\飞船下载转换工具.exe
+9. 当前只有 1 个“飞船下载转换工具 1.0”卸载项，安装位置正确。
+10. 当前软件下载目录仍为 D:\；隔离真实验收没有修改正式设置。
+11. 覆盖安装前关键文件备份：
+    D:\FeichuanDownloadConverterDev\artifacts\installer-upgrade-20260814-note-rsc-fix\backup-installed
+12. 更早的直接替换备份与哈希：
+    D:\FeichuanDownloadConverterDev\artifacts\direct-replacement-20260814-note-rsc-fix
 
-本区块结论：
-指定长视频下载失败和小键盘 8 进度朗读均已修复。最终安装版在无人为终止或手工合并的情况下，
-再次下载同一视频成功；用户实测争渡可读出窗口中的当前任务进度 99%。本次严格按用户新增要求，
-只替换当前安装目录内核文件，不生成安装包，不发布服务器更新。
+六、当前安装文件审计
 
-下载失败根因与修复：
-1. 抖音页面同时提供约 2.6 秒占位片段、约 94 分 47 秒纯视频轨和独立音频轨；旧逻辑只保留首个
-   候选，合并失败后没有重新配对或重下。
-2. 新逻辑按实际流类型和时长选择多组候选，排除短占位，校验响应长度，支持续传和三次重试；
-   合并失败会尝试其他兼容配对，并重新下载最佳轨道一次。
-3. 长视频停在 99% 的最终根因是 FFmpeg 继承 worker 长期开启的 JSON Lines stdin，写完输出后仍
-   等待标准输入。合并和 HLS 子进程现统一使用 DEVNULL stdin。
-4. 为避开长中文输出名的收尾风险，FFmpeg 先写同卷短英文临时名，不使用本地下载不需要的
-   faststart，成功后原子改为最终中文文件名；AAC 兼容合并时限延长到 30 分钟。
+1. 飞船下载转换工具.exe
+   - 大小：162816 字节
+   - SHA-256：8132E6324A98E17C6C8D6F91D754604EF0F731C0D1388E6C1859D7F4C49ADA00
+2. 飞船下载转换工具.dll
+   - 大小：131584 字节
+   - SHA-256：ED7FC254ADB404C470D830986B7CE779F5CF64B0ED262C4B3A22CF8DCE28C0C1
+3. AccessibleVideoToText.Core.dll
+   - 大小：73216 字节
+   - SHA-256：D121CD48FB22B94F6E968CCD17B63F64C0E18F095DAC3602F03C3087B911EC69
+4. feichuan-worker.exe
+   - 大小：18755802 字节
+   - SHA-256：FCD6E3E65E5F6715D542E47AB49425AB2DFFE8D3ADF11F4A9FF10D532CC81075
+5. 使用说明.txt
+   - 大小：8526 字节
+   - SHA-256：B817CD55BAACEFCD473E96A36B87DAD52FDC7D2CBEB1B32B7A7A34531AF5DDEF
 
-小键盘 8 与无障碍：
-1. 任务期间保存当前阶段和最新确定百分比；软件收到物理小键盘 8 时，每按一次发送一次 UIA
-   AutomationNotification，Num Lock 开关均识别，独立方向键上不误触发。
-2. 争渡会先截获小键盘 8 并朗读当前窗口，因此任务期间主窗口标题和 AccessibleName 持续包含
-   “当前任务进度 X%”；任务结束立即恢复原产品标题，不抢焦点、不自动切页。
-3. 用户现场确认争渡读出“飞船下载转换工具，当前任务进度 99%”。
+七、最终安装包
 
-安装目录直接替换：
-1. 当前安装目录：C:\Users\apple007\AppData\Local\Programs\飞船下载工具
-2. 最终 feichuan-worker.exe：18735715 字节；SHA-256：
-   0A746B1895234DC23DECFAEB9306AB81EF366FACB9B9070819EDBF1BEE07666C
-3. 当前飞船下载转换工具.dll SHA-256：
-   4E582A8697220837E891DDA4C929A70A7340E22F544E9A8963CB56BA2EC891AF
-4. 当前使用说明.txt SHA-256：
-   DAC129671E3851ABA634355BB8740B781C80AB9E4F57AC85F4D5017D6A97929B
-5. 最终 worker 替换与上一版备份：
-   D:\FeichuanDownloadConverterDev\artifacts\direct-replacement-20260811-04
-6. 初始安装文件备份在 direct-replacement-20260811-01\backup-installed；02/03/04 保存逐版备份。
-7. 三个安装文件的安装目录 SHA-256 均与对应构建暂存一致；设置、凭据、用户数据、固定工具、
-   快捷方式和卸载信息没有改动。
-
-测试与真实验收：
-1. Python 离线 smoke 18/18；.NET Release 50/50，0 失败、0 跳过。
-2. worker PyInstaller EXE 构建后握手和正常关闭通过；最终 EXE 已直接替换并复核哈希。
-3. 最终无人为干预真实下载约从首个临时文件 12:37:01 到正式文件 12:40:29，共约 3 分 28 秒；
-   视频时长 5686.966667 秒，即约 1 小时 34 分 47 秒。
-4. 最终 MP4 为 336813761 字节，含 H.264 视频和 AAC 44100 Hz 双声道音频；FFmpeg 全包读取
-   返回 0，无解码/封装错误。
-5. 正式提交后任务 .part 和短名合并临时文件均为 0；空闲关闭后主程序、worker、FFmpeg、
-   ffprobe 残留进程为 0。两个开发诊断临时文件已删除，D 盘正式验收视频保留。
-6. git diff --check 仅有行尾转换提醒，无空白错误；差异敏感模式扫描无命中。没有读取凭据、
-   Cookie、签名地址、媒体令牌或识别正文。
-
-发布边界：
-1. 本次没有运行候选安装包构建脚本，没有生成或替换任何 Setup EXE。
-2. 本次结束检查时 D 盘根目录没有 Setup EXE；本次未创建或改动安装包，服务器更新发布继续暂停。
-3. 用户先测试当前直接替换的安装版，完全确认后再考虑安装包或其他发布工作。
-
-新会话继续说明：
-进入 D:\FeichuanDownloadConverterDev，完整阅读 AGENTS.md、合并计划和本文件最后区块；运行
-git status、git log -3 --oneline 并查看 logs\merge-development 最新记录。当前安装版已经直接
-替换最终 worker/DLL/帮助，不要再次生成安装包，除非用户重新明确授权。不得读取或输出凭据、
-Cookie、签名 URL、媒体令牌或识别正文；服务器更新发布保持暂停。
-==================== 交接区块结束 ====================
-
-==================== 交接区块开始 ====================
-日期时间：2026-08-11 23:25（北京时间）
-当前软件版本：1.0（版本不变，获取解析直连已通过真实验收并生成本地安装包）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支：main
-功能提交：09a0aa0 feat: copy resolved direct links to clipboard
-
-本区块结论：
-“获取解析直连”已经加入当前安装版并通过用户给定单条抖音视频的真实验收。用户明确确认成功后，
-重新授权生成 D 盘本地安装包；产品显示版本仍为 1.0，程序集/文件版本仍为 1.0.0.0，没有增加版本号。
-服务器更新发布继续暂停，两个旧项目仍未修改。
-
-功能和交互：
-1. “处理模式”标准组合框现有四项，第四项准确名称为“获取解析直连”。启动焦点仍在“下载链接或
-   平台分享文本”；按一次 Tab 到组合框、下方向键选择第四项、按 Enter 即可开始。
-2. 输入框和组合框 Enter 均走同一开始逻辑。直连任务沿用统一忙闲、取消和关闭生命周期；结束后
-   复位“只下载”，Cancel 禁用，不抢焦点、不自动切换页签。
-3. 直连模式支持各平台的单个视频；明确拒绝批量输入、用户主页、合集、频道、播放列表、直播、
-   图文和图片。优先复制带音画的合并直连；只有分离轨道时按用户要求只复制最佳音频直连。
-4. 成功后 worker 直接写入 Windows 系统剪贴板，界面给出已复制及到期提醒。该模式只解析和复制，
-   不下载媒体，也不创建媒体文件。
-
-安全设计：
-1. JSON Lines 协议版本保持 1，只新增 `direct_link.copy` 能力；协议响应只含复制成功和媒体种类，
-   不含直连地址。
-2. 解析后的直连只在 worker 内存和系统剪贴板短暂存在，不进入 stdout/stderr、协议、日志或磁盘；
-   完成复制后清理内存引用。
-3. 用户用于验收的分享文本没有写入源码、测试、日志或交接说明；解析直连没有显示、记录或保存。
-4. 本次没有读取或输出凭据、Cookie、签名 URL、媒体令牌或识别正文。
-
-真实失败、修复和验收：
-1. 首次安装版手动测试没有获得直连。非敏感诊断确认抖音将独立音频响应也误标为 `video/mp4`，
-   原候选判断没有识别该地址中的明确音频标记。
-2. worker 已补充识别地址中的 `audio` 标记并重新构建、直接替换；其他候选选择和敏感信息边界不变。
-3. 修复后使用用户给定的单条抖音作品做安装版真实验收：系统剪贴板序列改变，剪贴板中是一个有效
-   HTTP(S) 直连；仅在内存做 Range 探测，返回 HTTP 206，未显示或保存地址。
-4. 服务器 Content-Type 仍误标为 `video/mp4`，产品依据明确音频标记正确选择分离音频直连。
-5. 用户随后明确反馈“成功了非常好”，因此本功能真实验收成功。
-
-自动测试与无障碍：
-1. Python 离线 smoke 19/19；.NET Release 50/50，0 失败、0 跳过。
-2. worker 源码和 PyInstaller EXE 的构建、握手、正常关闭、能力声明、安全拒绝及直连路径通过。
-3. 暂存 UIA 验证启动焦点为分享文本输入框、一次 Tab 到处理模式、四个模式均可读；安全路径任务
-   完成后复位“只下载”，Cancel 禁用。
-4. 断电重启后安装文件与备份均完整；退出测试后主程序和 worker 无残留进程。
-5. `git diff --check` 无空白错误；敏感模式及验收短链暂存扫描无命中。
-
-当前安装目录直接替换：
-1. 安装目录：C:\Users\apple007\AppData\Local\Programs\飞船下载工具
-2. 飞船下载转换工具.dll：129024 字节；SHA-256：
-   A39A2EF9D5F689CACA53C4018494FB7B9323CA082DCB9252A382CF273B6FEEBA
-3. feichuan-worker.exe：18747058 字节；SHA-256：
-   882BF2C1241E965FEA328608A30A5288DE4505DEBAC0B37D238894C71ABA93C7
-4. 使用说明.txt：7924 字节；SHA-256：
-   7B0C064455CD4CC323AB2FBAE7CF77ADCD92FBC66F1E83974F87ED5CE5040377
-5. 首轮三文件替换与备份：
-   D:\FeichuanDownloadConverterDev\artifacts\direct-replacement-20260811-05
-6. 音频识别修复前 worker 备份：
-   D:\FeichuanDownloadConverterDev\artifacts\direct-replacement-20260811-06\backup-installed
-7. 设置、凭据、用户数据、固定工具、快捷方式和卸载信息没有改动。
-
-本地安装包：
-1. 用户在真实验收成功后明确重新授权生成本地安装包；运行 `scripts\build_candidate.ps1` 成功。
-2. 项目安装包：D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe
-3. 项目审计哈希：D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe.sha256
-4. D 盘最终交付：D:\飞船下载转换工具-Setup-1.0.exe
-5. 文件大小：148145443 字节；SHA-256：
-   696070FFEF7F86E3E7E64B80E0BB8B9E0CD548819864E4DA8FD75600AE42C4FC
-6. 项目 release 与 D 盘根目录 EXE 哈希完全一致；D 盘根目录没有 `.sha256`。
-7. 产品显示版本 1.0、程序集/文件版本 1.0.0.0、固定 AppId
-   {1E97F30E-8634-4032-A5A2-715394D9A471} 均未改变。
-8. 候选应用目录共 301 个文件；封装 worker 协议版本 1、worker 版本 1.0，并声明
-   `direct_link.copy` 能力。
-9. 安装包 Authenticode 状态为 NotSigned，Windows 可能显示“未知发布者”，不得称为已签名版本。
-
-发布边界：
-1. 本次只生成用户明确授权的本地完整安装包，没有覆盖安装，也没有改动当前已验收安装版。
-2. 没有构建、复制、上传或发布服务器更新包；服务器更新发布继续暂停。
-3. 两个旧项目 D:\飞船下载工具开发 与 D:\AccessibleVideoToMp3 仍只能作为稳定基线，禁止修改。
-
-新会话继续说明：
-进入 D:\FeichuanDownloadConverterDev，完整阅读 AGENTS.md、合并计划和本文件最后区块；运行
-git status、git log -3 --oneline 并查看 logs\merge-development 最新记录。当前安装版和 D 盘根目录
-安装包均已包含“获取解析直连”，版本仍为 1.0。不得记录或输出凭据、Cookie、签名 URL、媒体令牌、
-解析直连和识别正文；不得修改两个旧项目。服务器更新发布保持暂停，除非用户以后明确重新授权。
-==================== 交接区块结束 ====================
-
-==================== 交接区块开始 ====================
-日期时间：2026-08-14 13:36（北京时间）
-当前软件版本：1.0（抖音图文图片和音频按需下载开发开始）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支：main
-起始提交：dc666d5 docs: record direct-link delivery and installer
-
-本区块目的：
-开始实现单条抖音图文按用户选择下载“仅音频”或“图片和音频”。默认和旧调用继续仅音频；
-图片只下载为 WebP，不做 OCR 或语音识别；选择原有 TXT 处理模式时只识别背景音频。
-
-已确认边界：
-1. JSON Lines 协议保持版本 1；新增可选 `douyin_note_content`，缺失默认 `audio_only`。
-2. 单链接图片模式不生成批量图文说明 TXT；主页、合集和其它平台行为不变。
-3. 图片或音频单边失败按部分成功返回，保留成功文件并继续处理成功音频；两边都失败才失败。
-4. 正式增加常见纯音频转 MP3；图片继续明确跳过并保留。
-5. 自动测试通过后可备份并直接覆盖当前安装版；关键验收失败自动恢复旧版；真实验收成功后
-   生成项目安装包并复制到 D 盘根目录。服务器更新发布仍暂停。
-6. `artifacts/direct-replacement-*` 是受保护的既有未跟踪历史备份，本轮不删除、移动或提交。
-
-正在处理：
-补充一手开源调研，建立 19/19 Python 与 50/50 .NET 基线，随后实现协议、协调器、图片入口、
-WinForms 组合框和纯音频后处理。
-
-安全边界：
-不读取腾讯云凭据；Cookie、签名 URL、媒体令牌、请求头、验收短链和识别正文不进入协议、日志、
-源码或聊天。两个旧项目保持只读。服务器更新发布继续暂停。
-==================== 交接区块结束 ====================
-
-==================== 交接区块开始 ====================
-日期时间：2026-08-14 14:05（北京时间）
-当前软件版本：1.0（抖音图文图片和音频候选已通过自动测试）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支：main（尚未提交本轮实现）
-
-里程碑：
-1. 完成单条图文详情扫描、作品原图 WebP 管线、背景音频组合、部分成功协议和界面提示。
-2. 完成图文下载内容标准组合框、真实 Tab 顺序、Enter、复位和不持久化行为。
-3. 完成纯音频 Audio 类型与常见格式转 MP3；图片不做 OCR、转换或识别。
-4. Python 离线 smoke 19/19；.NET Release 51/51；候选 worker 握手、能力声明、正常关闭通过。
-5. 候选：D:\FeichuanDownloadConverterDev\artifacts\note-images-audio-candidate-20260814\app。
-6. 候选 UIA 验证两个组合框、Tab 顺序、直连拒绝、复位和 Cancel 禁用通过；首次 SendKeys 焦点
-   尝试失败，补充父面板 TabIndex 后通过。启动焦点自动观测受测试窗口前台状态影响为 false。
-
-下一步：
-替换当前安装版前备份应用 DLL、Core DLL、worker 和使用说明并记录哈希；替换后运行安装版 UIA。
-关键失败立即退出并恢复备份。真实图文短链尚未写入任何文件或日志，验收时只通过界面输入。
-==================== 交接区块结束 ====================
-
-==================== 交接区块开始 ====================
-日期时间：2026-08-14 14:40（北京时间）
-当前软件版本：1.0（抖音图文图片和音频功能已直接替换到当前安装版，等待用户手动真实验收）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支：main
-起始提交：dc666d5 docs: record direct-link delivery and installer
-提交状态：本轮实现、测试和文档尚未提交；禁止丢弃当前工作树。
-
-本区块结论：
-“抖音图文按需下载图片和音频”最小实现、离线自动测试、候选构建和安装目录四文件替换已经完成。
-用户决定停止自动真实验收，改为自己手动使用本轮提供的抖音图文分享文本测试。因此真实作品的
-“仅下载音频”和“下载图片和音频”结果尚未确认，新的 1.0 安装包也尚未生成或复制到 D 盘根目录。
-验收分享文本和短链没有写入源码、日志、交接、测试或磁盘文件，继续只允许由用户手动粘贴到界面。
-
-已完成的源码能力：
-1. 主窗口在原“处理模式”后新增标准组合框“图文下载内容(&I)”，选项为“仅下载音频”和
-   “下载图片和音频”；默认仅音频，不持久化，每次任务结束恢复仅音频。
-2. Tab 顺序为分享文本输入框、处理模式、图文下载内容、任务页签；两个组合框都支持 Enter 开始。
-   原四个处理模式名称、顺序和索引不变；抖音视频、主页、合集、YouTube、普通网站和本地文件不变。
-3. JSON Lines 协议仍为版本 1；`task.start` 新增可选 `douyin_note_content`，只允许
-   `audio_only` 和 `images_and_audio`，字段缺失按 `audio_only`；worker 声明
-   `douyin.note.images` 能力。旧 worker 忽略新字段时静默保持仅音频。
-4. 只有解析后为抖音 `/note/` 或 `/share/note/` 且选择图片和音频时才进入新组合分支。
-   单条图文通过作品详情 JSON 的 `image_post_info.images`/`images` 解析，不抓页面全部 `<img>`，
-   从而避免把头像、二维码、推荐封面和界面图标误当作品图片。
-5. 图片复用既有原图候选、WebP 转换、统一命名、`.part` 临时文件和原子提交管线；单链接不生成
-   批量图文说明 TXT。命名格式为“抖音图文_作者_日期_作品ID_001.webp”等。
-6. 背景音频继续复用原单链接下载路径。图片和音频独立执行：一边失败返回“部分成功”并保留另一边，
-   两边都失败才判定整个任务失败；成功音频仍可进入已有 MP3/转文字后处理。
-7. 正式增加纯音频媒体类型：M4A、AAC、FLAC、WAV、OGG、Opus、WMA 可按原处理模式转换 MP3；
-   图片始终只保留，不做 OCR、音频转换或语音识别。
-8. 相关文档已更新：README.md、worker\README.md、docs\release\使用说明.txt、开发日志.txt，
-   新增 docs\research\2026-08-14-douyin-note-images-audio.md。调研仅参考 MIT 项目字段和流程，
-   没有复制代码或增加依赖。
-
-自动测试和候选状态：
-1. 开发前基线：Python 离线 smoke 19/19；.NET Release 50/50。
-2. 实现后的最近完整回归：Python 离线 smoke 19/19；.NET Release 51/51，均为 0 失败、0 跳过。
-3. 最近完整回归后又只修改了 MainForm 父面板 TabIndex 和对应 UIA/测试断言；修改后候选和安装版
-   UIA 均通过，但最终发布前仍应再运行一次完整 Python 19 组和 .NET 51 项回归。
-4. worker PyInstaller 构建、协议握手、版本 1、`douyin.note.images` 能力和正常关闭已经通过。
-5. 项目候选目录：
-   D:\FeichuanDownloadConverterDev\artifacts\note-images-audio-candidate-20260814\app
-6. 候选/安装版 UIA 已验证：两个组合框存在且项数正确、Tab 顺序正确、直连模式安全拒绝图文、
-   任务结束两个组合框复位、Cancel 禁用。自动化的启动焦点观测受前台窗口状态影响为 false；
-   构造函数焦点规则没有改变，源代码回归通过，仍建议用户手动确认一次启动焦点。
-7. `git diff --check` 当时只有行尾转换提醒，没有空白错误。最终提交前必须重新执行差异检查和
-   敏感模式扫描；不得把分享短链、Cookie、签名 URL、请求头或媒体令牌写入任何文件。
-
-当前安装版替换状态：
-1. 安装目录：C:\Users\apple007\AppData\Local\Programs\飞船下载工具
-2. 已先备份旧安装文件，再替换以下四个文件；安装目录哈希与项目候选完全一致：
-   - 飞船下载转换工具.dll：131584 字节；SHA-256：
-     ED7FC254ADB404C470D830986B7CE779F5CF64B0ED262C4B3A22CF8DCE28C0C1
-   - AccessibleVideoToText.Core.dll：73216 字节；SHA-256：
-     D121CD48FB22B94F6E968CCD17B63F64C0E18F095DAC3602F03C3087B911EC69
-   - feichuan-worker.exe：18750603 字节；SHA-256：
-     E1ABA879E562A3127DED597BA36A97D1C227177C979AC822D5CB600CFB2C95F1
-   - 使用说明.txt：8526 字节；SHA-256：
-     B817CD55BAACEFCD473E96A36B87DAD52FDC7D2CBEB1B32B7A7A34531AF5DDEF
-3. 旧安装文件完整备份：
-   D:\FeichuanDownloadConverterDev\artifacts\direct-replacement-20260814-note-images-audio\backup-installed
-4. 替换前后哈希记录：
-   D:\FeichuanDownloadConverterDev\artifacts\direct-replacement-20260814-note-images-audio\hashes-before.txt
-5. 安装版 UIA 通过后没有自动回滚；当前电脑运行的是新候选内核。
-6. 自动验收尝试未实际开始下载。临时建立的仅音频验收目录为空：
-   D:\FeichuanDownloadConverterDev\artifacts\acceptance\douyin-note-audio-only-20260814
-7. 软件的下载目录已恢复为 D:\。停止自动验收后，主程序、worker、FFmpeg、ffprobe 和 yt-dlp
-   相关残留进程检查结果为 0。
-
-用户手动真实验收步骤：
-第一轮——仅下载音频：
-1. 从桌面快捷方式启动当前安装版，确认启动焦点仍在分享文本输入框。
-2. 建议在软件中把下载目录临时设为上面的空验收目录，避免与 D 盘既有文件混在一起。
-3. 粘贴本轮用户提供的完整抖音图文分享文本；处理模式选择“只下载”；图文下载内容保持
-   “仅下载音频”；按 Enter 或“开始”。
-4. 完成后应只有 1 个可正常播放的背景音频，不应有 WebP、TXT、占位 MP4、`.part` 或转换临时文件。
-5. 检查两个组合框都恢复默认、Cancel 禁用；Alt+O 应打开实际结果目录。
-
-第二轮——下载图片和音频：
-1. 建议新建另一个空目录，例如：
-   D:\FeichuanDownloadConverterDev\artifacts\acceptance\douyin-note-images-audio-manual-20260814
-   并在软件中切换到该目录，避免已有文件触发跳过或编号规则。
-2. 粘贴同一完整分享文本；处理模式选择“只下载”；图文下载内容选择“下载图片和音频”；开始任务。
-3. 完成后应得到作品的全部 WebP 原图和 1 个可正常播放的背景音频；WebP 应能正常打开，编号连续。
-4. 不应出现说明 TXT、占位 MP4、头像、二维码、推荐内容图片、`.part` 或转换临时文件。
-5. 检查“部分成功”提示是否只在某一部分确实失败时出现；正常完整下载不应显示部分成功。
-6. 检查两个组合框恢复默认、Cancel 禁用，Alt+O 打开正确目录；退出后任务栏/任务管理器不应残留
-   主程序、worker、FFmpeg 或 ffprobe。
-7. 全部测试后把软件下载目录恢复为 D:\。
-
-可选的第三轮后处理核对：
-1. 若需要验证计划中的纯音频后处理，可对同一图文选择原“下载后转换为 MP3”或转文字模式。
-2. 已有 MP3 应复用；M4A 等背景音频应转为 MP3；只有音频参与后处理，所有 WebP 原图应原样保留。
-3. 转文字模式只应为背景音频生成识别 TXT，不得对图片做 OCR 或为每张图片生成 TXT。
-
-验收失败时的处理：
-1. 不要生成新安装包，不要覆盖 D 盘根目录安装包，保留失败目录作为本地证据，但不要把敏感直连
-   或 Cookie 写入反馈、日志和截图。
-2. 先关闭软件并确认相关进程退出，然后把上述 `backup-installed` 中四个同名文件复制回安装目录；
-   用 `hashes-before.txt` 的 old 哈希复核。旧哈希分别为：
-   - 飞船下载转换工具.dll：A39A2EF9D5F689CACA53C4018494FB7B9323CA082DCB9252A382CF273B6FEEBA
-   - AccessibleVideoToText.Core.dll：4F04358B071068A6CD9F2BAD2DD1301E049B2A5804A623CA3F48DB75B4F9EC6B
-   - feichuan-worker.exe：882BF2C1241E965FEA328608A30A5288DE4505DEBAC0B37D238894C71ABA93C7
-   - 使用说明.txt：7B0C064455CD4CC323AB2FBAE7CF77ADCD92FBC66F1E83974F87ED5CE5040377
-3. 用户只需反馈是“仅音频失败”“图片和音频失败”“部分成功不正确”或具体界面现象，不必再次
-   在日志中粘贴短链。后续会先复现和修复，再全量回归、重新构建候选、备份替换并重新验收。
-
-用户确认两轮都成功后的收尾：
-1. 再运行全部 Python 19 组离线 smoke 和 .NET Release 51 项测试，运行最终 UIA、`git diff --check`、
-   协议/日志/异常敏感信息扫描和残留进程检查。
-2. 更新开发日志和本交接文件，完成本轮本地 Git 提交；不要提交 `artifacts/direct-replacement-*`、
-   验收媒体、构建产物或其它被忽略文件。
-3. 按用户已给授权运行 `scripts\build_candidate.ps1`，生成：
+1. 项目安装包：
    D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe
-4. 验证安装包内容、版本 1.0/1.0.0.0、固定 AppId、worker 能力和 SHA-256；把同一安装包复制到：
+2. 项目审计哈希：
+   D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe.sha256
+3. D 盘最终交付：
    D:\飞船下载转换工具-Setup-1.0.exe
-   两处哈希必须一致，D 盘根目录不复制 `.sha256`。安装包仍未做 Authenticode 签名。
-5. 不构建、不复制、不上传、不发布服务器更新包；不读取腾讯云凭据；两个旧项目保持只读。
+4. 文件大小：148164320 字节。
+5. SHA-256：C90B5A77C460C621ABD44CDEFD5E9737464095C0E213C695794EEB7852509A5E
+6. 项目 release 与 D 盘根目录 EXE 的大小和 SHA-256 完全一致。
+7. D 盘根目录没有复制 `.sha256`。
+8. 产品显示版本 1.0、文件版本 1.0.0.0、固定 AppId 均未改变。
+9. 安装包 Authenticode 状态为 NotSigned，Windows 可能提示“未知发布者”，不得称为已签名版本。
 
-新会话接续说明：
-进入 D:\FeichuanDownloadConverterDev，完整阅读 AGENTS.md、docs\requirements\merge-development-plan.md、
-本文件最后区块和 docs\research\2026-08-14-douyin-note-images-audio.md；运行 `git status` 和
-`git log -3 --oneline`。当前工作树包含尚未提交的完整实现，当前安装目录已经是新候选，真实作品
-验收由用户手动进行。收到用户成功/失败结论前不要生成新安装包；失败按本区块回滚，成功按本区块
-完成全量回归、提交和本地安装包交付。服务器更新发布继续暂停。
-==================== 交接区块结束 ====================
+八、安全、许可证与保护边界
 
-==================== 交接区块开始 ====================
-日期时间：2026-08-14 15:00（北京时间）
-当前软件版本：1.0（图文图片和音频真实失败诊断开始）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支：main
+1. 没有读取、迁移或输出腾讯云凭据；没有记录 Cookie、签名 URL、媒体令牌、请求头、解析直连或
+   识别正文。
+2. 兼容数据目录继续使用 `%LOCALAPPDATA%\FeichuanDownloader` 和
+   `%LOCALAPPDATA%\AccessibleVideoToText`；本轮不迁移、不解密用户数据。
+3. 固定 FFmpeg/ffprobe、yt-dlp、FFMpegCore 和腾讯云 SDK 的许可证边界与 1.0 基线相同；安装包
+   继续携带 THIRD_PARTY_NOTICES 和对应许可证文本。
+4. 两个旧项目 D:\飞船下载工具开发 与 D:\AccessibleVideoToMp3 全程保持只读。
+5. `artifacts` 下真实验收媒体、候选构建和 `direct-replacement-*`/`installer-upgrade-*` 是本机
+   证据及恢复备份，不提交 Git，不要删除或移动。
+6. D 盘根目录的用户作品 WebP 是用户需要的正式文件，不要删除。
+7. 没有生成、复制、上传或发布服务器更新包；只有用户以后再次明确授权时才能恢复服务器发布。
 
-本区块目的：
-用户手动确认选择“只下载”和“下载图片和音频”后，D 盘没有生成图片或背景音频，现授权按既定计划
-执行真实复现、修复、完整回归和当前安装版替换。
+九、Git 状态和后续接续
 
-已确认：
-1. 当前下载目录设置为 D:\，桌面快捷方式指向当前安装目录，安装版四文件哈希与上一交接一致。
-2. 当前工作树仍包含未提交的完整图文实现，禁止丢弃；两个旧项目继续只读。
-3. 静态检查已发现背景音频路径没有显式强制仅音频，离线假下载器测试未覆盖真实命令选择。
-
-安全与发布边界：
-真实分享文本只在运行时使用，不写入文件或日志；不得输出直连、Cookie、请求头、媒体令牌或识别
-正文。本轮不生成安装包、不发布服务器更新；关键失败恢复上一安装备份。
-==================== 交接区块结束 ====================
-
-==================== 交接区块开始 ====================
-日期时间：2026-08-14 15:40（北京时间）
-当前软件版本：1.0（抖音图文图片和音频真实修复已直接替换并验收成功）
-开发目录：D:\FeichuanDownloadConverterDev
-Git 分支：main
-起始提交：dc666d5 docs: record direct-link delivery and installer
-
-本区块结论：
-用户指定的作品确实是抖音 `/note/` 图文，提供一张 2160×2880 作品图片和独立背景音频。图片已先
-单独下载并永久保留在 D 盘根目录。随后依据真实页面行为修复源码、构建 worker、备份并直接替换
-当前安装版；源代码、候选 worker 和安装版三轮真实验收均完整得到 1 张 WebP 和 1 个 MP3。
-
-失败根因与修复：
-1. 旧安装内核真实复现两次均只得到背景 MP3，返回部分成功；图片警告为没有从作品详情响应中解析
-   到图文原图。下载目录和快捷方式均正确，不是用户选择或保存位置问题。
-2. 抖音页面不再触发旧的作品详情 XHR；当前作品图片存在于页面 RSC `window.__pace_f` 数据流的
-   `aweme.detail.images`。新扫描器保留旧接口捕获，并增加精确匹配当前作品 ID 的 RSC 兜底，
-   只读取作品图片数组，不抓页面全部 `<img>`，避免混入头像、二维码和推荐内容。
-3. 图片候选优先使用 `downloadUrlList`，再回退 `urlList`，继续走既有 WebP 校验、`.part` 和原子
-   提交管线。图文短链解析后统一走图文分支；背景音频显式选择 `bestaudio/best`。
-4. 新增离线 RSC 回退测试、图文强制音频测试和真实 yt-dlp 参数断言；协议版本和产品版本不变。
-
-真实产物与验收：
-1. D 盘根目录保留的用户图片为有效 WebP，389206 字节、2160×2880；已人工查看，确为作品正文
-   图片，不是头像、封面、二维码或推荐图，禁止删除。
-2. 源码 worker 验收、PyInstaller 候选 worker 验收、当前安装版 worker 验收均为完整成功：每轮
-   1 张 WebP、1 个 MP3，部分成功 false、警告 0、`.part` 0、stderr 0。
-3. Python 离线 smoke 19/19；.NET Release 51/51，0 失败、0 跳过。候选 UIA 和安装版 UIA 最终
-   均通过；UIA SendKeys 的前台焦点波动由测试脚本显式重新聚焦并重试一次解决，产品逻辑未改变。
-4. 最终主程序、worker、FFmpeg、ffprobe、yt-dlp 残留进程为 0；软件下载目录仍为 D:\。
-
-当前安装版与备份：
-1. 安装目录：C:\Users\apple007\AppData\Local\Programs\飞船下载工具
-2. 最终 feichuan-worker.exe：18756582 字节；SHA-256：
-   732C88C5043E8C5EB0278FF19576870C328950D4EF66D9B619A0B0723EAFE166
-3. 应用 DLL、Core DLL 和使用说明未改变；安装目录四文件与候选一致。
-4. 本轮替换前四文件备份和哈希审计：
-   D:\FeichuanDownloadConverterDev\artifacts\direct-replacement-20260814-note-rsc-fix
-5. 替换前进程检查为 0，未实际使用用户授权的强制退出；若以后替换时软件仍运行，可按授权先终止
-   主程序及 worker/FFmpeg 进程树，再复核目标后替换。
-
-安全和发布边界：
-1. 分享文本、短链、解析直连、Cookie、请求头和媒体令牌未写入源码、测试、日志或交接；作品候选
-   只在 worker 内存中使用。没有读取腾讯云凭据或识别正文。
-2. 本轮只构建应用候选并直接替换当前安装内核，没有生成或改动 Setup EXE，没有构建、复制、上传
-   或发布服务器更新包。服务器更新发布继续暂停。
-3. 两个旧项目保持只读；受保护的 artifacts 历史备份、真实验收媒体和构建产物不提交 Git。
-
-新会话继续说明：
-进入 D:\FeichuanDownloadConverterDev，完整阅读 AGENTS.md、合并计划、本文件最后区块和图文调研；
-运行 git status 与 git log -3。当前安装版已经包含 RSC 图文图片兜底和显式音频选择，并通过指定
-真实作品验收。除非用户以后明确要求，不要生成新安装包或恢复旧 worker；服务器更新发布保持暂停。
-==================== 交接区块结束 ====================
+1. 图文图片和音频功能提交：b0664f2 feat: download Douyin note images and audio
+2. 该提交包含 WinForms 图文选项、协议、纯音频后处理、RSC 图片兜底、显式音频选择、测试、调研、
+   使用说明和开发日志。
+3. `artifacts/` 显示为未跟踪属于预期，因为其中包含受保护的历史备份、构建和真实验收证据；不得
+   使用 `git add -A` 把它们提交。
+4. 新会话先进入 D:\FeichuanDownloadConverterDev，完整阅读 AGENTS.md、合并开发计划和本文件，
+   再运行 `git status` 与 `git log -3 --oneline`。
+5. 当前安装版和 D 盘根目录安装包均已包含图文 RSC 兜底，版本仍为 1.0。除非用户明确提出新的
+   修改，不要恢复旧 worker、不要重新覆盖安装、不要生成新安装包。
+6. 服务器更新发布继续暂停。
