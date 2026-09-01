@@ -142,6 +142,45 @@ public sealed class WinFormsAccessibilityBaselineTests
     }
 
     [TestMethod]
+    public void SettingsDialog_UsesAccessibleStandardControlsForOutputDirectory()
+    {
+        RunInSta(() =>
+        {
+            using var dialog = new SettingsDialog(
+                192,
+                cloudCredentialsConfigured: false,
+                OutputDirectoryPreference.CustomDirectory,
+                @"D:\统一结果");
+            var controls = Descendants(dialog).ToArray();
+            var sourceOption = controls.OfType<RadioButton>().Single(control =>
+                control.AccessibleName == "源文件旁边，默认");
+            var customOption = controls.OfType<RadioButton>().Single(control =>
+                control.AccessibleName == "统一保存到指定文件夹");
+            var path = controls.OfType<TextBox>().Single(control =>
+                control.AccessibleName == "统一结果目录路径");
+            var choose = controls.OfType<Button>().Single(control =>
+                control.AccessibleName == "选择统一结果文件夹");
+            var restore = controls.OfType<Button>().Single(control =>
+                control.AccessibleName == "恢复为源文件旁边");
+
+            Assert.IsFalse(sourceOption.Checked);
+            Assert.IsTrue(customOption.Checked);
+            Assert.IsTrue(path.ReadOnly);
+            Assert.AreEqual(@"D:\统一结果", path.Text);
+            Assert.IsTrue(choose.Enabled);
+            Assert.IsNotNull(dialog.AcceptButton);
+            Assert.AreEqual("保存", ((Button)dialog.AcceptButton).Text);
+            Assert.IsNotNull(dialog.CancelButton);
+            Assert.AreEqual("取消", ((Button)dialog.CancelButton).Text);
+            Assert.IsTrue(sourceOption.Text.Contains('&'));
+            Assert.IsTrue(customOption.Text.Contains('&'));
+            Assert.IsTrue(choose.Text.Contains('&'));
+            Assert.IsTrue(restore.Text.Contains('&'));
+            Assert.IsTrue(controls.All(control => control.GetType() != typeof(UserControl)));
+        });
+    }
+
+    [TestMethod]
     public void HelpDialog_UsesStandardReadOnlyTextAndSafeCloseButton()
     {
         RunInSta(() =>

@@ -38,9 +38,26 @@ public sealed class LocalVideoProcessor
         ArgumentNullException.ThrowIfNull(item);
         var sourceDirectory = Path.GetDirectoryName(item.SourcePath)
             ?? throw new IOException("无法确定源文件所在目录。 ");
+        return await ProcessAsync(
+            item,
+            bitrateKbps,
+            sourceDirectory,
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<VideoProcessingResult> ProcessAsync(
+        QueueItem item,
+        int bitrateKbps,
+        string outputDirectory,
+        IProgress<int>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
         var sourceStem = Path.GetFileNameWithoutExtension(item.SourcePath);
         var reservation = OutputNameAllocator.FindAvailable(
-            sourceDirectory,
+            outputDirectory,
             sourceStem,
             requireMp3: true,
             requireTxt: false);
@@ -101,7 +118,11 @@ public sealed class LocalVideoProcessor
             cancellationToken.ThrowIfCancellationRequested();
             outputCommitter.CommitOwnedPart(partPath, finalPath);
             item.Stage = JobStage.Succeeded;
-            item.StepDetail = "MP3 已保存到源文件旁边";
+            var sourceDirectory = Path.GetDirectoryName(Path.GetFullPath(item.SourcePath));
+            var outputDirectory = Path.GetDirectoryName(Path.GetFullPath(finalPath));
+            item.StepDetail = string.Equals(sourceDirectory, outputDirectory, StringComparison.OrdinalIgnoreCase)
+                ? "MP3 已保存到源文件旁边"
+                : "MP3 已保存到设置的统一结果目录";
             item.ResultMessage = $"成功生成 {Path.GetFileName(finalPath)}";
             return new VideoProcessingResult(finalPath, probe);
         }

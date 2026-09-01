@@ -58,5 +58,37 @@ public sealed class DpapiSettingsStoreTests
         Assert.AreEqual(320, actual.Mp3BitrateKbps);
         Assert.IsFalse(File.Exists(paths.CredentialsFile));
     }
-}
 
+    [TestMethod]
+    public async Task SaveAndLoadSettings_PreservesCustomOutputDirectory()
+    {
+        var paths = new LocalDataPaths(testDirectory);
+        var store = new DpapiSettingsStore(paths);
+        var expected = new AppSettings(
+            Mp3BitrateKbps: 256,
+            OutputPreference: OutputDirectoryPreference.CustomDirectory,
+            CustomOutputDirectory: @"D:\统一结果");
+
+        await store.SaveAsync(expected, CancellationToken.None);
+        var actual = await store.LoadAsync(CancellationToken.None);
+
+        Assert.AreEqual(OutputDirectoryPreference.CustomDirectory, actual.OutputPreference);
+        Assert.AreEqual(@"D:\统一结果", actual.CustomOutputDirectory);
+    }
+
+    [TestMethod]
+    public async Task LoadSettings_OldJsonWithoutCustomDirectoryUsesCompatibleDefault()
+    {
+        var paths = new LocalDataPaths(testDirectory);
+        var store = new DpapiSettingsStore(paths);
+        await File.WriteAllTextAsync(
+            paths.SettingsFile,
+            "{\"Mp3BitrateKbps\":192,\"OutputPreference\":\"source-directory\",\"HasShownVersion1Help\":true}");
+
+        var actual = await store.LoadAsync(CancellationToken.None);
+
+        Assert.AreEqual(OutputDirectoryPreference.SourceDirectory, actual.OutputPreference);
+        Assert.IsNull(actual.CustomOutputDirectory);
+        Assert.IsTrue(actual.HasShownVersion1Help);
+    }
+}

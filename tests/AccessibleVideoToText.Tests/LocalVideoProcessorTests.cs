@@ -108,6 +108,36 @@ public sealed class LocalVideoProcessorTests
         Assert.AreEqual(sourcePath, converter.LastRequest?.SourcePath);
     }
 
+    [TestMethod]
+    public async Task ProcessAsync_ExplicitOutputDirectoryKeepsSourceAndWritesOnlyToTarget()
+    {
+        var sourceDirectory = Path.Combine(testDirectory, "source");
+        var outputDirectory = Path.Combine(testDirectory, "output");
+        Directory.CreateDirectory(sourceDirectory);
+        Directory.CreateDirectory(outputDirectory);
+        var sourcePath = Path.Combine(sourceDirectory, "课程.mp4");
+        await File.WriteAllTextAsync(sourcePath, "source-stays-read-only");
+        var processor = new LocalVideoProcessor(
+            new FakeProbe(hasVideo: true, audioStreams: 1),
+            new FakeConverter(),
+            new AtomicOutputCommitter());
+        var item = new QueueItem(sourcePath, MediaKind.Video);
+
+        var result = await processor.ProcessAsync(
+            item,
+            192,
+            outputDirectory,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.AreEqual(Path.Combine(outputDirectory, "课程.mp3"), result.Mp3Path);
+        Assert.IsTrue(File.Exists(result.Mp3Path));
+        Assert.AreEqual("source-stays-read-only", await File.ReadAllTextAsync(sourcePath));
+        Assert.IsFalse(File.Exists(Path.Combine(sourceDirectory, "课程.mp3")));
+        Assert.IsEmpty(Directory.GetFiles(outputDirectory, "*.part.mp3"));
+        StringAssert.Contains(item.StepDetail, "统一结果目录");
+    }
+
     private sealed class FakeProbe(bool hasVideo, int audioStreams) : IMediaProbe
     {
         public Task<MediaProbeResult> ProbeAsync(string sourcePath, CancellationToken cancellationToken)

@@ -27,7 +27,9 @@
 - 抖音单条图文可按需下载作品原图和背景音频；默认仍仅下载音频，图片不做 OCR 或识别。
 - 获取解析直连支持单视频和单条抖音图文；图文只复制背景音频直连，不创建媒体文件。
 - M4A、AAC、FLAC、WAV、OGG、Opus、WMA 等纯音频可通过现有流程转换为 MP3。
+- 源码开发候选已支持把新生成的 MP3/TXT 统一保存到用户选择的本地目录；下载原文件目录不变。
 - 未完成安装版真实验收和用户争渡朗读验收前，只能称为测试候选版。
 
 每次继续开发前先完整阅读根目录 `AGENTS.md`、
+`docs/requirements/offline-first-continuation-plan.md`、
 `docs/requirements/merge-development-plan.md` 与根目录 `交接说明.txt` 的最后一个区块。

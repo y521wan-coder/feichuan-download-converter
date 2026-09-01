@@ -3,8 +3,14 @@
 ## 适用范围与接续入口
 
 本文件适用于 `D:\FeichuanDownloadConverterDev` 整个仓库。用户明确指令优先，其后是
-本文件、`docs/requirements/merge-development-plan.md` 和现有代码约定。开始修改前必须
-完整阅读合并计划与根目录 `交接说明.txt` 最后一个区块。
+本文件、`docs/requirements/offline-first-continuation-plan.md`、
+`docs/requirements/merge-development-plan.md` 和现有代码约定。开始修改前必须完整阅读
+离线优先接续计划、合并计划与根目录 `交接说明.txt` 最后一个区块。
+
+2026-09-01 起，剩余功能执行顺序固定为“单机离线闭环优先；需要互联网、第三方云服务或
+自有服务器的功能只保留稳定接口、状态模型、假实现和离线契约测试，待用户以后明确要求时
+再接真实服务”。任何接手者不得因为接口已经存在就自行发起真实网络请求、服务器部署、
+远程发布、账号配置或费用操作。
 
 两个旧目录 `D:\飞船下载工具开发`、`D:\AccessibleVideoToMp3` 是稳定基线，禁止修改、
 清理、重建或追加交接内容。新开发、构建、日志和交接只写入本仓库。

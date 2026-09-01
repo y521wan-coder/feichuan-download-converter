@@ -55,8 +55,25 @@ public sealed class CloudJobProcessor
         ArgumentNullException.ThrowIfNull(item);
         var directory = Path.GetDirectoryName(item.SourcePath)
             ?? throw new IOException("无法确定源视频所在目录。 ");
-        var reservation = OutputNameAllocator.FindAvailable(
+        return await ProcessVideoAsync(
+            item,
+            bitrateKbps,
             directory,
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<CloudProcessingResult> ProcessVideoAsync(
+        QueueItem item,
+        int bitrateKbps,
+        string outputDirectory,
+        IProgress<CloudPhaseProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        var reservation = OutputNameAllocator.FindAvailable(
+            outputDirectory,
             Path.GetFileNameWithoutExtension(item.SourcePath),
             requireMp3: true,
             requireTxt: true);

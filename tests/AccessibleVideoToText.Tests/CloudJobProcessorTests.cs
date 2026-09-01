@@ -7,6 +7,46 @@ namespace AccessibleVideoToText.Tests;
 public sealed class CloudJobProcessorTests
 {
     [TestMethod]
+    public async Task Video_CustomOutputDirectoryKeepsSourceAndPairsMp3WithTxt()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var sourceDirectory = Path.Combine(directory, "source");
+            var outputDirectory = Path.Combine(directory, "output");
+            Directory.CreateDirectory(sourceDirectory);
+            Directory.CreateDirectory(outputDirectory);
+            var sourcePath = Path.Combine(sourceDirectory, "课程.mp4");
+            await File.WriteAllTextAsync(sourcePath, "source-stays-read-only");
+            var dependencies = CreateDependencies(
+                directory,
+                CloudTranscriptionState.Succeeded,
+                "识别正文",
+                hasVideo: true);
+            var processor = dependencies.CreateProcessor();
+
+            var result = await processor.ProcessVideoAsync(
+                new QueueItem(sourcePath, MediaKind.Video),
+                192,
+                outputDirectory,
+                progress: null,
+                CancellationToken.None);
+
+            Assert.AreEqual(Path.Combine(outputDirectory, "课程.mp3"), result.Mp3Path);
+            Assert.AreEqual(Path.Combine(outputDirectory, "课程.txt"), result.TxtPath);
+            Assert.IsTrue(File.Exists(result.Mp3Path));
+            Assert.IsTrue(File.Exists(result.TxtPath));
+            Assert.AreEqual("source-stays-read-only", await File.ReadAllTextAsync(sourcePath));
+            Assert.IsFalse(File.Exists(Path.Combine(sourceDirectory, "课程.mp3")));
+            Assert.IsFalse(File.Exists(Path.Combine(sourceDirectory, "课程.txt")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task ExistingMp3_SuccessWritesBodyDeletesCloudObjectAndLeavesSourceUnchanged()
     {
         var directory = CreateTemporaryDirectory();
@@ -103,9 +143,10 @@ public sealed class CloudJobProcessorTests
     private static TestDependencies CreateDependencies(
         string directory,
         CloudTranscriptionState transcriptionState,
-        string? transcript)
+        string? transcript,
+        bool hasVideo = false)
     {
-        var probe = new FakeProbe();
+        var probe = new FakeProbe(hasVideo);
         var converter = new FakeConverter();
         var committer = new AtomicOutputCommitter();
         var objectStore = new FakeObjectStore();
@@ -157,13 +198,13 @@ public sealed class CloudJobProcessorTests
             delay: delay);
     }
 
-    private sealed class FakeProbe : IMediaProbe
+    private sealed class FakeProbe(bool hasVideo) : IMediaProbe
     {
         public Task<MediaProbeResult> ProbeAsync(string sourcePath, CancellationToken cancellationToken) =>
             Task.FromResult(new MediaProbeResult(
                 "mp3",
                 TimeSpan.FromMinutes(1),
-                HasVideo: false,
+                HasVideo: hasVideo,
                 AudioStreamCount: 1,
                 AudioCodec: "mp3",
                 SampleRate: 44100,
@@ -173,8 +214,14 @@ public sealed class CloudJobProcessorTests
 
     private sealed class FakeConverter : IAudioConverter
     {
-        public Task ConvertFinalMp3Async(AudioConversionRequest request, IProgress<int>? progress, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+        public async Task ConvertFinalMp3Async(
+            AudioConversionRequest request,
+            IProgress<int>? progress,
+            CancellationToken cancellationToken)
+        {
+            await File.WriteAllBytesAsync(request.TemporaryOutputPath, [1, 2, 3], cancellationToken);
+            progress?.Report(100);
+        }
 
         public async Task CreateCloudAudioAsync(CloudAudioRequest request, IProgress<int>? progress, CancellationToken cancellationToken)
         {

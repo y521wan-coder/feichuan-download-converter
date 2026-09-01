@@ -1549,7 +1549,7 @@ public sealed class MainForm : Form
             settings = await settingsStore.LoadAsync(CancellationToken.None);
             if (settings.Mp3BitrateKbps is not (128 or 192 or 256 or 320))
             {
-                settings = new AppSettings();
+                settings = settings with { Mp3BitrateKbps = 192 };
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
@@ -1591,7 +1591,26 @@ public sealed class MainForm : Form
             return;
         }
 
-        SetCurrentResultDirectory(scopedItems[0].SourcePath);
+        var outputSettingsSnapshot = settings;
+        Dictionary<Guid, string> outputDirectories;
+        try
+        {
+            outputDirectories = scopedItems
+                .Where(item => item.Kind != MediaKind.Mp3)
+                .ToDictionary(
+                    item => item.Id,
+                    item => OutputDirectoryPolicy.ResolveForSource(outputSettingsSnapshot, item.SourcePath));
+        }
+        catch (Exception exception) when (
+            exception is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ReportStatus(ToActionableError(exception), true);
+            return;
+        }
+
+        currentResultDirectory = outputDirectories.Count > 0
+            ? outputDirectories.Values.First()
+            : Path.GetDirectoryName(scopedItems[0].SourcePath);
 
         IsProcessing = true;
         previousBatchFinished = false;
@@ -1662,16 +1681,20 @@ public sealed class MainForm : Form
 
                 try
                 {
-                    await localVideoProcessor.ProcessAsync(
+                    var processingResult = await localVideoProcessor.ProcessAsync(
                         item,
                         settings.Mp3BitrateKbps,
+                        outputDirectories[item.Id],
                         progress,
                         currentItemCancellation.Token);
+                    SetCurrentResultDirectory(processingResult.Mp3Path);
                     succeeded++;
                     progressBar.Value = 100;
                     progressBar.AccessibleDescription = $"{item.FileName}，转换完成，100%。";
                     UpdateQueueRow(item);
-                    ReportStatus($"{item.FileName} 转换成功，MP3 已保存在源文件旁边。", false);
+                    ReportStatus(
+                        $"{item.FileName} 转换成功，MP3 已保存在{DescribeOutputLocation(outputSettingsSnapshot)}。",
+                        false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -1735,7 +1758,7 @@ public sealed class MainForm : Form
             ResetProcessingMode();
             UpdateButtons();
 
-            var summary = $"本批结束：成功 {succeeded} 个，失败 {failed} 个，跳过 {skipped} 个，已取消 {cancelled} 个，未开始 {notStarted} 个。成功的 MP3 保存在各自源文件旁边。";
+            var summary = $"本批结束：成功 {succeeded} 个，失败 {failed} 个，跳过 {skipped} 个，已取消 {cancelled} 个，未开始 {notStarted} 个。成功的 MP3 保存在{DescribeOutputLocation(outputSettingsSnapshot)}。";
             resultText.Text = summary + Environment.NewLine + Environment.NewLine +
                 string.Join(Environment.NewLine, scopedItems.Select(item =>
                     $"{item.FileName}：{(string.IsNullOrWhiteSpace(item.ResultMessage) ? item.StepDetail : item.ResultMessage)}"));
@@ -1747,6 +1770,29 @@ public sealed class MainForm : Form
 
     private async Task StartCloudBatchAsync(PasteDecision decision)
     {
+        var allItems = queueList.Items.Cast<ListViewItem>()
+            .Select(row => row.Tag)
+            .OfType<QueueItem>()
+            .ToArray();
+        var scopedItems = decision.FirstItemOnly ? allItems.Take(1).ToArray() : allItems;
+        var outputSettingsSnapshot = settings;
+        string? customOutputDirectory = null;
+        if (scopedItems.Length > 0 && OutputDirectoryPolicy.UsesCustomDirectory(outputSettingsSnapshot))
+        {
+            try
+            {
+                customOutputDirectory = OutputDirectoryPolicy.ResolveForSource(
+                    outputSettingsSnapshot,
+                    scopedItems[0].SourcePath);
+            }
+            catch (Exception exception) when (
+                exception is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                ReportStatus(ToActionableError(exception), true);
+                return;
+            }
+        }
+
         var credentials = await EnsureCloudCredentialsAsync();
         if (credentials is null)
         {
@@ -1754,14 +1800,9 @@ public sealed class MainForm : Form
             return;
         }
 
-        var allItems = queueList.Items.Cast<ListViewItem>()
-            .Select(row => row.Tag)
-            .OfType<QueueItem>()
-            .ToArray();
-        var scopedItems = decision.FirstItemOnly ? allItems.Take(1).ToArray() : allItems;
         if (scopedItems.Length > 0)
         {
-            SetCurrentResultDirectory(scopedItems[0].SourcePath);
+            SetCurrentResultDirectory(customOutputDirectory ?? scopedItems[0].SourcePath);
         }
         var cloudItems = scopedItems.Where(item =>
             item.Kind == MediaKind.Mp3 ? decision.TranscribeMp3 : decision.TranscribeVideos).ToArray();
@@ -1814,7 +1855,9 @@ public sealed class MainForm : Form
             }
         }
 
-        var fallbackDirectory = ChooseMp3FallbackDirectoryIfNeeded(scopedItems, decision);
+        var fallbackDirectory = customOutputDirectory is null
+            ? ChooseMp3FallbackDirectoryIfNeeded(scopedItems, decision)
+            : (Cancelled: false, Path: (string?)null);
         if (fallbackDirectory.Cancelled)
         {
             ReportStatus("现有 MP3 的原目录不可写，且未选择备用目录；没有开始云端批次。", true);
@@ -1823,6 +1866,28 @@ public sealed class MainForm : Form
         if (!string.IsNullOrWhiteSpace(fallbackDirectory.Path))
         {
             currentResultDirectory = fallbackDirectory.Path;
+        }
+
+        Dictionary<Guid, string> outputDirectories;
+        try
+        {
+            outputDirectories = scopedItems
+                .Where(item => item.Kind != MediaKind.Mp3 || decision.TranscribeMp3)
+                .ToDictionary(
+                    item => item.Id,
+                    item => customOutputDirectory ?? ResolveDefaultCloudOutputDirectory(
+                        item,
+                        fallbackDirectory.Path));
+        }
+        catch (Exception exception) when (
+            exception is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ReportStatus(ToActionableError(exception), true);
+            return;
+        }
+        if (outputDirectories.Count > 0)
+        {
+            currentResultDirectory = outputDirectories.Values.First();
         }
 
         IsProcessing = true;
@@ -1913,14 +1978,9 @@ public sealed class MainForm : Form
                     CloudProcessingResult processingResult;
                     if (item.Kind == MediaKind.Mp3)
                     {
-                        var sourceDirectory = Path.GetDirectoryName(item.SourcePath)
-                            ?? throw new IOException("无法确定 MP3 所在目录。 ");
-                        var outputDirectory = IsDirectoryWritable(sourceDirectory)
-                            ? sourceDirectory
-                            : fallbackDirectory.Path!;
                         processingResult = await cloudProcessor.ProcessMp3Async(
                             item,
-                            outputDirectory,
+                            outputDirectories[item.Id],
                             progress,
                             currentItemCancellation.Token);
                     }
@@ -1929,6 +1989,7 @@ public sealed class MainForm : Form
                         processingResult = await cloudProcessor.ProcessVideoAsync(
                             item,
                             settings.Mp3BitrateKbps,
+                            outputDirectories[item.Id],
                             progress,
                             currentItemCancellation.Token);
                     }
@@ -1937,6 +1998,7 @@ public sealed class MainForm : Form
                         await localVideoProcessor.ProcessAsync(
                             item,
                             settings.Mp3BitrateKbps,
+                            outputDirectories[item.Id],
                             new Progress<int>(percentage => ((IProgress<CloudPhaseProgress>)progress).Report(
                                 new CloudPhaseProgress(JobStage.ConvertingMp3, "正在转换最终 MP3", percentage))),
                             currentItemCancellation.Token);
@@ -2149,36 +2211,29 @@ public sealed class MainForm : Form
             : (true, null);
     }
 
-    private static bool IsDirectoryWritable(string directory)
+    private static bool IsDirectoryWritable(string directory) => OutputDirectoryPolicy.IsWritable(directory);
+
+    private static string ResolveDefaultCloudOutputDirectory(QueueItem item, string? fallbackDirectory)
     {
-        var probePath = Path.Combine(directory, $".accessible-video-to-text.{Guid.NewGuid():N}.write-test");
-        try
+        var sourceDirectory = Path.GetDirectoryName(item.SourcePath)
+            ?? throw new IOException("无法确定源文件所在目录。 ");
+        if (item.Kind == MediaKind.Mp3 && !IsDirectoryWritable(sourceDirectory))
         {
-            using (new FileStream(probePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose))
+            if (string.IsNullOrWhiteSpace(fallbackDirectory))
             {
+                throw new IOException("MP3 所在目录不可写，且没有选择备用结果目录。 ");
             }
 
-            return true;
+            return OutputDirectoryPolicy.ValidateCustomDirectory(fallbackDirectory);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
-        {
-            return false;
-        }
-        finally
-        {
-            try
-            {
-                if (File.Exists(probePath))
-                {
-                    File.Delete(probePath);
-                }
-            }
-            catch
-            {
-                // A zero-byte probe file is app-owned and can be removed by the user if a provider ignored DeleteOnClose.
-            }
-        }
+
+        return OutputDirectoryPolicy.ResolveForSource(new AppSettings(), item.SourcePath);
     }
+
+    private static string DescribeOutputLocation(AppSettings settings) =>
+        OutputDirectoryPolicy.UsesCustomDirectory(settings)
+            ? "设置的统一结果目录"
+            : "各自源文件旁边";
 
     private static string FormatDuration(TimeSpan duration) =>
         duration.TotalHours >= 1
@@ -2491,6 +2546,7 @@ public sealed class MainForm : Form
         HttpRequestException or TimeoutException => "网络暂时不可用，已按 2、5、15 秒重试。请检查系统网络和代理设置后再试。",
         InvalidDataException => exception.Message.Trim(),
         IOException when exception.Message.Contains("space", StringComparison.OrdinalIgnoreCase) => "磁盘空间不足。请释放空间后重试。",
+        IOException when exception.Message.Contains("结果目录", StringComparison.Ordinal) => exception.Message.Trim(),
         IOException => "媒体转换失败或输出不可写。请检查文件是否损坏、磁盘空间和目录权限。",
         _ when exception.GetType().Name.Contains("FFMpeg", StringComparison.OrdinalIgnoreCase) => "FFmpeg 无法解码该文件或转换失败。请检查文件是否损坏以及编解码器支持。",
         _ => "发生未预期错误。为保护隐私，界面不显示完整路径或底层命令。"
@@ -2521,7 +2577,11 @@ public sealed class MainForm : Form
             credentialsConfigured = false;
         }
 
-        using var dialog = new SettingsDialog(settings.Mp3BitrateKbps, credentialsConfigured);
+        using var dialog = new SettingsDialog(
+            settings.Mp3BitrateKbps,
+            credentialsConfigured,
+            settings.OutputPreference,
+            settings.CustomOutputDirectory);
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             switch (dialog.Action)
@@ -2545,9 +2605,16 @@ public sealed class MainForm : Form
                     await ClearLocalDataAsync();
                     break;
                 default:
-                    settings = settings with { Mp3BitrateKbps = dialog.Mp3BitrateKbps };
+                    settings = settings with
+                    {
+                        Mp3BitrateKbps = dialog.Mp3BitrateKbps,
+                        OutputPreference = dialog.OutputPreference,
+                        CustomOutputDirectory = dialog.CustomOutputDirectory
+                    };
                     await settingsStore.SaveAsync(settings, CancellationToken.None);
-                    ReportStatus($"设置已保存。最终 MP3 码率为 {settings.Mp3BitrateKbps} kbps。", false);
+                    ReportStatus(
+                        $"设置已保存。最终 MP3 码率为 {settings.Mp3BitrateKbps} kbps；生成文件保存在{DescribeOutputLocation(settings)}。",
+                        false);
                     break;
             }
         }
