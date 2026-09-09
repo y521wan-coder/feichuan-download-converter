@@ -16,6 +16,7 @@ public sealed class MainForm : Form
     private readonly JsonJobStore jobStore;
     private readonly JsonUsageLedger usageLedger;
     private readonly LocalVideoProcessor localVideoProcessor;
+    private readonly WeChatXiaoeCourseAutomation xiaoeCourseAutomation = new();
     private readonly TextBox linkInput = new();
     private readonly ComboBox processingMode = new();
     private readonly ComboBox douyinNoteContent = new();
@@ -258,6 +259,14 @@ public sealed class MainForm : Form
             "下载文件夹(&D)",
             null,
             async (_, _) => await ChooseDownloadFolderAsync());
+        var xiaoeCourseItem = new ToolStripMenuItem(
+            "下载微信当前小鹅通已购课程(&W)",
+            null,
+            async (_, _) => await StartCurrentWechatXiaoeCourseAsync())
+        {
+            ShortcutKeys = Keys.Alt | Keys.W,
+            ToolTipText = "只枚举微信当前课程目录中的直播回放；图文和推荐内容不会下载。"
+        };
         var qualityMenu = new ToolStripMenuItem("品质选择(&Q)");
         qualityBestItem.Checked = true;
         qualityBestItem.Click += async (_, _) => await SetQualityModeAsync(askEachTime: false);
@@ -271,6 +280,7 @@ public sealed class MainForm : Form
         actionMenu.DropDownItems.AddRange([
             pasteItem,
             downloadFolderItem,
+            xiaoeCourseItem,
             qualityMenu,
             douyinLoginItem,
             clearDouyinLogin,
@@ -779,6 +789,197 @@ public sealed class MainForm : Form
         if (outcome is not null && selectedMode > 0)
         {
             await BeginDownloadedPostProcessingAsync(outcome, selectedMode);
+        }
+    }
+
+    private async Task StartCurrentWechatXiaoeCourseAsync()
+    {
+        if (IsProcessing)
+        {
+            ReportStatus("已有任务正在进行，请等待当前任务结束后再下载微信课程。", true);
+            return;
+        }
+
+        ReportStatus("正在读取微信当前小鹅通已购课程目录；不会读取微信 Cookie。", false);
+        WeChatXiaoeCourseSelection course;
+        try
+        {
+            course = await xiaoeCourseAutomation.DiscoverCurrentCourseAsync(CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            Activate();
+            ReportStatus($"读取微信课程失败：{ToActionableError(exception)}", true);
+            return;
+        }
+
+        Activate();
+        var nonVideoCount = Math.Max(0, course.ReportedUpdateCount - course.Videos.Count);
+        var updateDetail = course.ReportedUpdateCount > 0
+            ? $"课程页显示已更新 {course.ReportedUpdateCount} 期，其中找到 {course.Videos.Count} 个直播视频"
+            : $"找到 {course.Videos.Count} 个直播视频";
+        var skippedDetail = nonVideoCount > 0
+            ? $"；另外 {nonVideoCount} 个非视频项目不会下载"
+            : "；图文和推荐内容不会下载";
+        var confirmation = MessageBox.Show(
+            this,
+            $"课程：{course.Title}\r\n{updateDetail}{skippedDetail}。\r\n\r\n" +
+            "软件将只操作这个课程目录中的直播回放。已有且通过校验的同名视频会跳过，以后再次运行可只补新发布课程。\r\n\r\n是否开始？",
+            "确认下载当前已购课程",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button2);
+        if (confirmation != DialogResult.Yes)
+        {
+            ReportStatus("已取消微信课程下载；磁盘文件没有修改。", false);
+            return;
+        }
+
+        IsProcessing = true;
+        previousBatchFinished = false;
+        stopBatchRequested = false;
+        batchCancellation = new CancellationTokenSource();
+        batchCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        UpdateButtons();
+        UpdateTrayStatus("正在下载微信课程");
+        SetCurrentTaskProgress("正在准备微信小鹅通课程下载", null);
+        var paths = new List<string>();
+        var skipped = 0;
+        var failed = 0;
+        string operationId = string.Empty;
+        try
+        {
+            try
+            {
+                sleepInhibitor = SystemSleepInhibitor.Acquire();
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                sleepInhibitor = null;
+                ReportStatus("无法临时阻止系统自动睡眠；请在课程下载期间保持电脑唤醒。", true);
+            }
+
+            var client = await EnsureWorkerClientAsync(batchCancellation.Token);
+            var prepared = await client.SendAsync(
+                "xiaoe.capture.prepare",
+                new { },
+                batchCancellation.Token);
+            operationId = prepared.Payload.GetProperty("operation_id").GetString() ?? string.Empty;
+            for (var index = 0; index < course.Videos.Count; index++)
+            {
+                batchCancellation.Token.ThrowIfCancellationRequested();
+                var episode = course.Videos[index];
+                var number = index + 1;
+                SetCurrentTaskProgress(
+                    $"正在处理第 {number}/{course.Videos.Count} 节：{episode.Title}",
+                    (number - 1) * 100 / course.Videos.Count);
+                ReportStatus(
+                    $"正在处理第 {number}/{course.Videos.Count} 节：{episode.Title}",
+                    false);
+                try
+                {
+                    await client.SendAsync(
+                        "xiaoe.capture.arm",
+                        new { operation_id = operationId },
+                        batchCancellation.Token);
+                    await xiaoeCourseAutomation.OpenEpisodeAsync(
+                        episode.Title,
+                        batchCancellation.Token);
+                    var response = await client.SendAsync(
+                        "xiaoe.capture.download",
+                        new
+                        {
+                            operation_id = operationId,
+                            course_title = course.Title,
+                            episode_title = episode.Title,
+                            episode_index = number,
+                            episode_total = course.Videos.Count,
+                            page_url = course.PageUrl
+                        },
+                        batchCancellation.Token);
+                    var path = response.Payload.GetProperty("path").GetString();
+                    if (!string.IsNullOrWhiteSpace(path))
+                    {
+                        paths.Add(path);
+                    }
+                    if (response.Payload.TryGetProperty("skipped", out var skippedElement) &&
+                        skippedElement.GetBoolean())
+                    {
+                        skipped++;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    failed++;
+                    ReportStatus(
+                        $"第 {number} 节未完成：{ToActionableError(exception)}；将继续下一节。",
+                        true);
+                }
+                finally
+                {
+                    try
+                    {
+                        await xiaoeCourseAutomation.ReturnToCatalogAsync(CancellationToken.None);
+                    }
+                    catch (Exception exception)
+                    {
+                        ReportStatus($"返回微信课程目录失败：{ToActionableError(exception)}", true);
+                    }
+                }
+            }
+
+            if (paths.Count > 0)
+            {
+                currentResultDirectory = Path.GetDirectoryName(paths[0]);
+            }
+            var downloaded = paths.Count - skipped;
+            var summary = $"微信课程处理结束：新下载 {downloaded} 节，已有有效文件跳过 {skipped} 节，失败 {failed} 节。";
+            resultText.Text = summary + Environment.NewLine +
+                string.Join(Environment.NewLine, paths.Select(Path.GetFileName));
+            ReportStatus(summary, failed > 0);
+        }
+        catch (OperationCanceledException)
+        {
+            if (workerClient?.IsRunning == true)
+            {
+                await workerClient.CancelOrTerminateAsync(TimeSpan.FromSeconds(5));
+            }
+            ReportStatus("微信课程下载已取消；已有成功文件保持不变。", false);
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"微信课程下载失败：{ToActionableError(exception)}", true);
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(operationId) && workerClient?.IsRunning == true)
+            {
+                try
+                {
+                    await ReleaseWorkerOperationAsync(workerClient, operationId, CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                    // Worker disposal below also clears all in-memory signed media state.
+                }
+            }
+            sleepInhibitor?.Dispose();
+            sleepInhibitor = null;
+            IsProcessing = false;
+            previousBatchFinished = true;
+            batchCancellation?.Dispose();
+            batchCancellation = null;
+            UpdateButtons();
+            UpdateTrayStatus("空闲");
+            SetCurrentTaskProgress("微信课程下载任务已经结束", null);
+            batchCompletion?.TrySetResult();
+            Show();
+            WindowState = FormWindowState.Normal;
+            Activate();
         }
     }
 

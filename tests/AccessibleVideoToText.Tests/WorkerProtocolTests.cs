@@ -22,6 +22,13 @@ public sealed class WorkerProtocolTests
                 text = "https://media.example/video?q-signature=must-not-cross"
             }));
         Assert.AreEqual("sensitive_value", valueError.Code);
+
+        var xiaoeValueError = Assert.ThrowsExactly<WorkerProtocolException>(() =>
+            WorkerProtocol.CreateRequest("three", "test", new
+            {
+                text = "https://media.xet.tech/replay.m3u8?sign=redacted-test-value"
+            }));
+        Assert.AreEqual("sensitive_value", xiaoeValueError.Code);
     }
 
     [TestMethod]
@@ -32,6 +39,10 @@ public sealed class WorkerProtocolTests
 
         Assert.IsFalse(diagnostic.Contains("do-not-log", StringComparison.Ordinal));
         StringAssert.Contains(diagnostic, "[已隐藏]");
+        Assert.AreEqual(
+            "媒体：[已隐藏签名地址]",
+            WorkerProtocol.SanitizeDiagnostic(
+                "媒体：https://media.xet.tech/replay.m3u8?sign=redacted-test-value"));
     }
 
     [TestMethod]
@@ -65,6 +76,9 @@ public sealed class WorkerProtocolTests
         Assert.IsTrue(hello.Payload.GetProperty("capabilities")
             .EnumerateArray()
             .Any(value => value.GetString() == "douyin.note.images"));
+        Assert.IsTrue(hello.Payload.GetProperty("capabilities")
+            .EnumerateArray()
+            .Any(value => value.GetString() == "xiaoe.capture.download"));
 
         var classified = await client.SendAsync(
             "link.classify",

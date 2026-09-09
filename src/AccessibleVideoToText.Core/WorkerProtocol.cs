@@ -171,12 +171,12 @@ public static partial class WorkerProtocol
     }
 
     [GeneratedRegex(
-        @"(?i)(?:\bAKID[0-9A-Za-z]{8,}\b|\b(?:authorization|cookie|q-signature|x-cos-security-token)\s*[:=]|https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=)",
+        @"(?i)(?:\bAKID[0-9A-Za-z]{8,}\b|\b(?:authorization|cookie|q-signature|x-cos-security-token)\s*[:=]|https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=|https?://\S*(?:xet\.tech|xiaoeknow\.com)/\S*\.(?:m3u8|ts)\?\S+)",
         RegexOptions.CultureInvariant)]
     private static partial Regex SensitiveValueRegex();
 
     [GeneratedRegex(
-        @"(?i)https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=\S+",
+        @"(?i)(?:https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=\S+|https?://\S*(?:xet\.tech|xiaoeknow\.com)/\S*\.(?:m3u8|ts)\?\S+)",
         RegexOptions.CultureInvariant)]
     private static partial Regex SignedUrlRegex();
 

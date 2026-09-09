@@ -39,10 +39,12 @@ _FORBIDDEN_KEYS = frozenset(
 _SENSITIVE_VALUE = re.compile(
     r"(?i)(?:\bAKID[0-9A-Za-z]{8,}\b|"
     r"\b(?:authorization|cookie|q-signature|x-cos-security-token)\s*[:=]|"
-    r"https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=)"
+    r"https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=|"
+    r"https?://\S*(?:xet\.tech|xiaoeknow\.com)/\S*\.(?:m3u8|ts)\?\S+)"
 )
 _SIGNED_URL = re.compile(
-    r"(?i)https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=\S+"
+    r"(?i)(?:https?://\S+\?(?:\S*&)?(?:q-signature|x-cos-security-token)=\S+|"
+    r"https?://\S*(?:xet\.tech|xiaoeknow\.com)/\S*\.(?:m3u8|ts)\?\S+)"
 )
 _LABELED_SECRET = re.compile(
     r"(?i)\b(secretid|secretkey|authorization|cookie|q-signature|x-cos-security-token)"

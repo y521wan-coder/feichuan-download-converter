@@ -29,6 +29,7 @@ TESTS = (
     ROOT / "tests" / "core_transaction_smoke.py",
     ROOT / "tests" / "worker_protocol_smoke.py",
     ROOT / "tests" / "direct_link_smoke.py",
+    ROOT / "tests" / "xiaoe_wechat_capture_smoke.py",
 )
 
 

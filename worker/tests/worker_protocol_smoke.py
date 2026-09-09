@@ -40,6 +40,7 @@ def check_protocol_guards() -> None:
         {"secret_key": "must-not-cross"},
         {"nested": {"cookie": "must-not-cross"}},
         {"text": "https://media.example/video?q-signature=must-not-cross"},
+        {"text": "https://media.xet.tech/replay.m3u8?sign=redacted-test-value"},
     ):
         try:
             encode_message("blocked", "test", payload)
@@ -96,6 +97,7 @@ def check_subprocess_round_trip() -> None:
         assert hello["type"] == "hello.result"
         assert hello["payload"]["worker_version"] == "1.0"
         assert "douyin.note.images" in hello["payload"]["capabilities"]
+        assert "xiaoe.capture.download" in hello["payload"]["capabilities"]
 
         classified = exchange(
             request(

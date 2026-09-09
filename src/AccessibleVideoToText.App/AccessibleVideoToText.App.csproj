@@ -18,6 +18,9 @@
     <ProjectReference Include="..\AccessibleVideoToText.Infrastructure\AccessibleVideoToText.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="..\..\docs\release\使用说明.txt" Link="使用说明.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

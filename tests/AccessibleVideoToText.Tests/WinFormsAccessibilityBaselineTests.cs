@@ -19,6 +19,14 @@ public sealed class WinFormsAccessibilityBaselineTests
             Assert.AreEqual(AutoScaleMode.Dpi, form.AutoScaleMode);
             Assert.IsTrue(form.KeyPreview);
 
+            var xiaoeMenuItem = AllMenuItems(form.MainMenuStrip!)
+                .Single(item => (item.Text ?? string.Empty).Contains(
+                    "微信当前小鹅通已购课程",
+                    StringComparison.Ordinal));
+            Assert.AreEqual(Keys.Alt | Keys.W, xiaoeMenuItem.ShortcutKeys);
+            Assert.IsTrue((xiaoeMenuItem.Text ?? string.Empty).Contains('&'));
+            Assert.IsFalse(string.IsNullOrWhiteSpace(xiaoeMenuItem.ToolTipText));
+
             var controls = Descendants(form).ToArray();
             var linkInput = controls.OfType<TextBox>().Single(textBox =>
                 textBox.AccessibleName == "下载链接或平台分享文本");
@@ -88,6 +96,23 @@ public sealed class WinFormsAccessibilityBaselineTests
                 Assert.IsNull(button.Image, $"按钮 {button.Text} 不得使用图片作为操作。 ");
             }
         });
+    }
+
+    private static IEnumerable<ToolStripMenuItem> AllMenuItems(ToolStrip strip)
+    {
+        foreach (ToolStripItem item in strip.Items)
+        {
+            if (item is not ToolStripMenuItem menuItem)
+            {
+                continue;
+            }
+
+            yield return menuItem;
+            foreach (var descendant in AllMenuItems(menuItem.DropDown))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     [TestMethod]

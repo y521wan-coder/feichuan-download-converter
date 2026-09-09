@@ -42,6 +42,7 @@ from .protocol import (
 from .quality import choices_from_media_descriptors
 from .software_updater import check_software_update
 from .windows_clipboard import ClipboardWriteError, copy_text_to_clipboard
+from .xiaoe_wechat_capture import XiaoeWechatCaptureSession
 
 
 class WorkerService:
@@ -52,6 +53,7 @@ class WorkerService:
         coordinator_factory: Callable[..., DownloadCoordinator] = DownloadCoordinator,
         emit: Callable[[bytes], None] | None = None,
         clipboard_writer: Callable[[str], None] | None = None,
+        xiaoe_capture_factory: Callable[[], XiaoeWechatCaptureSession] = XiaoeWechatCaptureSession,
     ) -> None:
         self.operations = OperationRegistry()
         self._emit = emit or (lambda _message: None)
@@ -61,6 +63,7 @@ class WorkerService:
         )
         self.shutdown_requested = False
         self._clipboard_writer = clipboard_writer or copy_text_to_clipboard
+        self._xiaoe_capture_factory = xiaoe_capture_factory
         self._task_lock = threading.RLock()
         self._task_thread: threading.Thread | None = None
         self._active_request_id = ""
@@ -74,6 +77,7 @@ class WorkerService:
             "core_update.check",
             "software_update.check",
             "direct_link.copy",
+            "xiaoe.capture.download",
         }:
             self._start_background(request)
             return None
@@ -92,6 +96,8 @@ class WorkerService:
             "douyin_login.status": self._douyin_login_status,
             "douyin_login.clear": self._douyin_login_clear,
             "operation.release": self._release_operation,
+            "xiaoe.capture.prepare": self._xiaoe_capture_prepare,
+            "xiaoe.capture.arm": self._xiaoe_capture_arm,
             "cancel": self._cancel,
             "shutdown": self._shutdown,
         }
@@ -126,6 +132,9 @@ class WorkerService:
                 "core_update.check",
                 "software_update.check",
                 "direct_link.copy",
+                "xiaoe.capture.prepare",
+                "xiaoe.capture.arm",
+                "xiaoe.capture.download",
                 "douyin.note.images",
                 "cancel",
                 "shutdown",
@@ -257,6 +266,8 @@ class WorkerService:
                 payload = self._core_update_check(request.payload)
             elif request.message_type == "direct_link.copy":
                 payload = self._direct_link_copy(request.payload)
+            elif request.message_type == "xiaoe.capture.download":
+                payload = self._xiaoe_capture_download(request.payload)
             else:
                 payload = self._software_update_check(request.payload)
             response = encode_message(request.request_id, f"{request.message_type}.result", payload)
@@ -383,6 +394,85 @@ class WorkerService:
             return {"copied": True, "media_kind": result.media_kind}
         finally:
             result.clear_sensitive()
+
+    def _xiaoe_capture_prepare(self, _payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        if self._background_busy() or self.coordinator.busy:
+            raise ProtocolError("worker_busy", "已有下载或扫描任务正在进行。")
+        try:
+            session = self._xiaoe_capture_factory()
+        except Exception as exc:
+            raise ProtocolError(
+                "xiaoe_cache_unavailable",
+                "无法读取微信课程播放缓存，请先在微信中开始播放自己已购买的课程。",
+            ) from exc
+        operation_id = self.operations.add(session)
+        return {"operation_id": operation_id}
+
+    def _xiaoe_capture_arm(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        operation_id = str(payload.get("operation_id") or "").strip()
+        session = self.operations.get(operation_id)
+        if not isinstance(session, XiaoeWechatCaptureSession):
+            raise ProtocolError("invalid_operation", "当前操作不是微信小鹅通课程捕获会话。")
+        try:
+            session.arm()
+        except Exception as exc:
+            raise ProtocolError(
+                "xiaoe_cache_unavailable",
+                "无法刷新微信课程播放缓存，请确认微信课程页面仍然打开。",
+            ) from exc
+        return {"armed": True}
+
+    def _xiaoe_capture_download(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        operation_id = str(payload.get("operation_id") or "").strip()
+        session = self.operations.get(operation_id)
+        if not isinstance(session, XiaoeWechatCaptureSession):
+            raise ProtocolError("invalid_operation", "当前操作不是微信小鹅通课程捕获会话。")
+        course_title = str(payload.get("course_title") or "").strip()
+        episode_title = str(payload.get("episode_title") or "").strip()
+        page_url = str(payload.get("page_url") or "").strip()
+        try:
+            episode_index = int(payload.get("episode_index") or 0)
+            episode_total = int(payload.get("episode_total") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ProtocolError("invalid_xiaoe_episode", "小鹅通课程序号无效。") from exc
+        self.coordinator.cancel_event.clear()
+
+        def progress(percent: float, message: str) -> None:
+            self._on_download_event(
+                DownloadEvent(
+                    stage="downloading",
+                    current=episode_index,
+                    total=episode_total,
+                    current_file=episode_title,
+                    overall_percent=(episode_index - 1 + percent / 100.0)
+                    * 100.0
+                    / max(episode_total, 1),
+                    message=message,
+                )
+            )
+
+        try:
+            result = session.capture_episode(
+                course_title=course_title,
+                episode_title=episode_title,
+                episode_index=episode_index,
+                episode_total=episode_total,
+                page_url=page_url,
+                cancel_event=self.coordinator.cancel_event,
+                on_progress=progress,
+            )
+        except InterruptedError as exc:
+            raise ProtocolError("cancelled", "小鹅通课程下载已取消。") from exc
+        except Exception as exc:
+            raise ProtocolError(
+                "xiaoe_capture_failed",
+                sanitize_public_text(exc),
+            ) from exc
+        return {
+            "path": str(result.path),
+            "skipped": result.skipped,
+            "duration_seconds": result.duration_seconds,
+        }
 
     def _prepared_download(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         operation_id = str(payload.get("operation_id") or "").strip()
