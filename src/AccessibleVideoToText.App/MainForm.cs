@@ -8,6 +8,7 @@ namespace AccessibleVideoToText.App;
 public sealed class MainForm : Form
 {
     private readonly ClipboardBatchAnalyzer clipboardAnalyzer = new();
+    private readonly TaskCompletionNotifier completionNotifier = new(CompletionSound.Play);
     private readonly LocalDataPaths localDataPaths;
     private readonly DpapiSettingsStore settingsStore;
     private readonly IMediaProbe mediaProbe;
@@ -694,6 +695,7 @@ public sealed class MainForm : Form
             return;
         }
 
+        using var completion = completionNotifier.Begin();
         DownloadProtocolOutcome? outcome = null;
         IsProcessing = true;
         previousBatchFinished = false;
@@ -800,6 +802,7 @@ public sealed class MainForm : Form
             return;
         }
 
+        using var completion = completionNotifier.Begin();
         ReportStatus("正在读取微信当前小鹅通已购课程目录；不会读取微信 Cookie。", false);
         WeChatXiaoeCourseSelection course;
         try
@@ -985,6 +988,7 @@ public sealed class MainForm : Form
 
     private async Task CopyDirectLinkAsync(string input)
     {
+        using var completion = completionNotifier.Begin();
         IsProcessing = true;
         previousBatchFinished = false;
         stopBatchRequested = false;
@@ -1230,7 +1234,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        if (outcome.WasBatch && MessageBox.Show(
+        if (outcome.WasBatch && selectedMode != 2 && MessageBox.Show(
                 this,
                 $"批量下载已经结束，共有 {processable.Length} 个结果可继续处理。是否现在开始“{ProcessingModeName(selectedMode)}”？",
                 "确认后续处理",
@@ -1782,6 +1786,7 @@ public sealed class MainForm : Form
 
     private async Task StartLocalBatchAsync(PasteDecision decision)
     {
+        using var completion = completionNotifier.Begin();
         var allItems = queueList.Items.Cast<ListViewItem>()
             .Select(row => row.Tag)
             .OfType<QueueItem>()
@@ -1971,6 +1976,7 @@ public sealed class MainForm : Form
 
     private async Task StartCloudBatchAsync(PasteDecision decision)
     {
+        using var completion = completionNotifier.Begin();
         var allItems = queueList.Items.Cast<ListViewItem>()
             .Select(row => row.Tag)
             .OfType<QueueItem>()
@@ -2027,33 +2033,12 @@ public sealed class MainForm : Form
         }
 
         var currentUsage = await usageLedger.GetCurrentMonthUsageAsync(credentials.SecretId, CancellationToken.None);
-        var estimateText = $"本批将把临时音频上传到您自己的腾讯云私有 COS，并提交常规 16k_zh 录音文件识别。\r\n\r\n本批估算时长：{FormatDuration(estimatedDuration)}。\r\n本机本月已成功识别估算：{FormatDuration(currentUsage)}。\r\n提交后可能产生 ASR 和 COS 费用，且腾讯云任务不能取消。其他电脑、软件和控制台用量本机无法得知；腾讯云控制台是唯一权威数据。\r\n\r\n是否继续？";
-        if (MessageBox.Show(
-                this,
-                estimateText,
-                "确认上传腾讯云并可能产生费用",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
-        {
-            ReportStatus("已取消云端批次；没有上传文件或提交识别。", false);
-            return;
-        }
-
+        ReportStatus(
+            $"已按所选转文字任务自动继续腾讯云上传和识别。本批估算时长：{FormatDuration(estimatedDuration)}；本机本月已成功识别估算：{FormatDuration(currentUsage)}。费用和额度以腾讯云控制台为准。",
+            false);
         if (currentUsage + estimatedDuration >= CloudLimits.MonthlyFreeAllowance)
         {
-            var overLimitText = $"本机估算在本批后将达到 {FormatDuration(currentUsage + estimatedDuration)}，已达到或超过每月 10 小时保护线。实际费用和额度以腾讯云控制台为准。\r\n\r\n是否仍然提交？默认选择为取消。";
-            if (MessageBox.Show(
-                    this,
-                    overLimitText,
-                    "已达到本机 10 小时费用保护线",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
-            {
-                ReportStatus("已由 10 小时费用保护取消提交；没有上传文件或提交识别。", true);
-                return;
-            }
+            ReportStatus("本机估算已达到每月 10 小时参考线，将按所选任务继续识别；实际费用和额度以腾讯云控制台为准。", false);
         }
 
         var fallbackDirectory = customOutputDirectory is null
@@ -2487,6 +2472,7 @@ public sealed class MainForm : Form
             return;
         }
 
+        using var completion = completionNotifier.Begin();
         IsProcessing = true;
         stopBatchRequested = false;
         cloudTaskAlreadySubmitted = true;

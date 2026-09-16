@@ -21,6 +21,7 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="任务结束.wav" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="..\..\docs\release\使用说明.txt" Link="使用说明.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

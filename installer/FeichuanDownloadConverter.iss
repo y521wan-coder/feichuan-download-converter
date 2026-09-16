@@ -73,7 +73,9 @@ Type: files; Name: "{autodesktop}\{#OldAppName}.lnk"
 Type: filesandordirs; Name: "{userprograms}\{#OldAppName}"
 
 [Files]
-Source: "{#SourceStage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceStage}\*"; DestDir: "{app}"; Excludes: "任务结束.wav"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Preserve a user's replacement chime during same-version upgrades.
+Source: "{#SourceStage}\任务结束.wav"; DestDir: "{app}"; Flags: onlyifdoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"

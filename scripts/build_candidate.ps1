@@ -74,6 +74,7 @@ $required = @(
     "飞船下载转换工具.exe",
     "feichuan-worker.exe",
     "使用说明.txt",
+    "任务结束.wav",
     "tools\ffmpeg.exe",
     "tools\ffprobe.exe",
     "tools\yt-dlp.exe",

@@ -40,6 +40,7 @@ logs/development/*.binlog
 *.part.txt
 *.mp3
 *.wav
+!src/AccessibleVideoToText.App/任务结束.wav
 *.m4a
 *.mp4
 *.mkv
