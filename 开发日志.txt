@@ -232,3 +232,91 @@
   项目中历史安装包仍为 148154650 字节、SHA-256
   `188EDE5C647F88AF2C76F1E1AE85B3A97A356585C0A962EA8E5D6A45ABCEEEC3`，D 盘根目录当前没有该副本，
   按用户要求未重新复制。没有读取腾讯云凭据、Cookie 或记录签名媒体地址，没有服务器操作。
+
+飞船下载转换工具 1.0 可替换提示音与本地安装包接续
+更新时间：2026-09-17 07:27（北京时间）
+用户已授权：将提示音提供为可自行替换的文件，生成 D 盘最新安装包，最后更新交接；版本号不变，不发布服务器更新。
+上一阶段已完成自动腾讯云转文字与整项任务结束提示音：69 项 .NET、20 组 Python 离线检查通过，安装目录仅替换主程序 DLL。
+本轮继续完成独立 WAV、安装包和最终审计。
+
+飞船下载转换工具 1.0 自动转文字、可替换结束提示音及 D 盘安装包最终交接说明
+
+更新时间：2026-09-17 07:35（北京时间）
+开发目录：D:\FeichuanDownloadConverterDev
+分支：main；功能提交：5c964da feat: automate selected TXT tasks and add replaceable completion chime
+产品版本：1.0；程序集/文件版本：1.0.0.0；AppId 不变。
+
+一、用户要求与最终行为
+
+1. 用户明确要求选择生成 TXT 后取消腾讯云上传前的“是/否”提示，自动继续上传和识别。
+   MainForm 保留时长探测和本机用量提示，移除上传及 10 小时二次确认；生成 TXT 的批量后处理
+   也自动衔接。只下载、只转 MP3 的任务不会因此自动上传。凭据校验、COS/ASR、清理和恢复不变。
+   本项用户要求优先于旧计划中的逐批费用确认规则，不得按旧交接恢复该弹窗。
+2. 下载、本地转换、云端转文字、解析直连、微信课程和恢复查询结束后播放一次提示音。
+   下载加后处理视为整项任务，阶段之间不重复播放。失败或取消也提示本机任务结束，结果以界面为准。
+   提示音不抢焦点，不切换页签，不改变任务结果；音频不可用不阻断任务清理。
+3. 本次继续得到用户明确授权：提供可自行替换的音效文件、在 D 盘生成最新安装包、更新交接。
+   没有升级版本号，没有上传或发布服务器更新。
+
+二、提示音文件与替换方法
+
+1. 当前安装版音效完整路径：
+   C:\Users\apple007\AppData\Local\Programs\飞船下载工具\任务结束.wav
+2. 先退出软件，把喜欢的普通 PCM WAV 音效改名为“任务结束.wav”，覆盖同名文件，再重新打开软件。
+   建议简短音效；不能仅把 MP3 的扩展名改成 WAV。新文件在下次启动后的首次任务结束时加载。
+3. 默认音效是自行合成的三音提示，约 0.75 秒、PCM s16le、22050 Hz、单声道，无第三方音频授权负担。
+   源文件：src\AccessibleVideoToText.App\任务结束.wav；.NET 发布时自动携带。
+4. 程序读入内存后不锁定文件；文件缺失、头损坏或无法播放时回退内置默认提示音，不修改用户 WAV。
+5. 安装器对该 WAV 单独使用 onlyifdoesntexist，通配复制排除该文件，覆盖安装保留用户音效。
+   WAV 位于安装目录根部，不在既有 InstallDelete 的 assets/tools 范围中。
+
+三、测试和当前安装版
+
+1. .NET Release：72/72 通过，0 失败、0 跳过；Python 离线 smoke：20/20 通过。
+2. 新增检查覆盖：普通及超过 10 小时参考线的无确认前置流程、嵌套任务只响一次、异步失败/取消、
+   音频异常不阻断、外部 WAV 加载与无文件锁、缺失/无效文件回退。云前置仅使用隔离的虚构测试凭据。
+3. 通过已安装 DLL 和已安装 FFmpeg 完成本地 WAV 转 MP3；提示音调用一次、取消按钮禁用、模式复位、
+   源文件哈希不变、无 .part。独立 WAV 经 ffprobe 验证有效。没有使用真实云凭据或提交收费识别。
+4. 当前安装目录仍为 C:\Users\apple007\AppData\Local\Programs\飞船下载工具。
+   对比修改前静态文件，仅更新主程序 DLL 和使用说明，新增任务结束.wav；下载 worker、Core、
+   Infrastructure、其余组件、用户设置和媒体不变。没有重新运行完整安装器或创建快捷方式。
+5. 本地安装包已编译成功；489 个候选静态载荷包括自包含 .NET、原已验证的小鹅通 worker、
+   tools/assets/licenses、更新的说明和独立 WAV。未重新构建或升级下载 worker。
+6. git diff --check 通过，新增/修改代码高风险密钥模式扫描 0 命中；说明书保持 UTF-8 BOM 与 CRLF。
+   本轮没有重新做争渡人工朗读、真实平台下载或真实云识别验收；不能宣称这些已重新实测。
+
+四、最终安装包
+
+1. D 盘交付：D:\飞船下载转换工具-Setup-1.0.exe
+2. 项目副本：D:\FeichuanDownloadConverterDev\release\飞船下载转换工具-Setup-1.0.exe
+3. 文件大小：164501213 字节。
+4. SHA-256：96F9204402B2F6AFED05CB22092D01A3BEF3B344B56EF2BF80F16C20E3A5A6AE
+5. 两处文件 SHA-256 完全一致；.sha256 只放项目 release，未复制到 D 盘根目录。
+6. 版本仍为 1.0 / 1.0.0.0；Authenticode 为 NotSigned，不得称为已签名。
+7. 生成本地安装包已由本轮用户明确授权；服务器更新发布仍暂停。
+
+五、备份与可重现线索
+
+1. 第一阶段 DLL 替换备份和验证：artifacts\completion-chime-20260917。
+2. 本次候选：artifacts\replaceable-chime-20260917\app。
+3. 本次更新前 DLL、使用说明及历史安装包备份：artifacts\replaceable-chime-20260917\backup-before。
+4. 审计：同目录 installed-files.json、installer-audit.json、installer-build.log。
+5. .NET 使用 tools\dotnet\dotnet.exe publish，Release、win-x64、self-contained true、--no-restore。
+   本次 worker 复用 worker\dist\feichuan-worker.exe，SHA-256：
+   527EC1896EA039A6EFF4D2B10521D0594BC2BE40281322FAAE2E00B6CE721CA4。
+   工具/许可证等静态载荷复用已验证的 candidate-xiaoe-20260909-final\app；没有打包运行日志或凭据。
+   安装器用既有 installer\FeichuanDownloadConverter.iss，经 Inno Setup 6 编译，SourceStage 指向本次候选。
+   scripts\build_candidate.ps1 也已增加 WAV 必需文件检查，供以后完整重建。
+6. 当前安装关键文件：
+   飞船下载转换工具.dll：45D318030F2EEA159616F535296F4F587D6388639AF1FF97647738A7AFD05365
+   任务结束.wav：7E6959DE003B74E42D5C3AA89C111C5C9AB2C9BBED21BC65205FE50B89B99761
+   使用说明.txt：54806B6612089E879652ABBF3267026C3F3E1AA6DA6A8A6ECDD94457D0ABEE30
+   feichuan-worker.exe：527EC1896EA039A6EFF4D2B10521D0594BC2BE40281322FAAE2E00B6CE721CA4
+   AccessibleVideoToText.Core.dll：E7AE20E9B60B03DE39F15837D7EF9678F52E1B37DD059615E71736AB53F8D65A
+
+六、以后接续
+
+1. 先读 AGENTS、离线优先计划、合并计划和本区块，再查 Git 状态/日志。当前源码已提交；artifacts 未跟踪正常。
+2. 不要回退自动转文字、不重复更新已安装内核、不覆盖用户音效、不改版本或擅自发布服务器更新。
+3. 本机恢复记录管理、只重试 TXT 等其他待办本轮未开展。所有历史 artifacts、D 盘用户课程/媒体和旧项目继续保留。
+4. 用户数据目录、真实腾讯云凭据、抖音/微信数据没有读取、迁移或清理；没有连接服务器、SSH 或数据库。
