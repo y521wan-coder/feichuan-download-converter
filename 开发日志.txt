@@ -335,3 +335,13 @@
   D 盘交付哈希一致。
 - 安装：`/VERYSILENT` 返回码 0；安装目录 489 项核对 0 缺失；卸载项“飞船下载转换工具 1.1”。
 - 真实验收：安装版 worker 真实下载 YouTube 单视频成功，警告 0、`.part` 0、stderr 0、退出码 0。
+
+
+2026-09-26：源码已备份到 GitHub 公开仓库。
+
+- 仓库：https://github.com/y521wan-coder/feichuan-download-converter（公开，默认分支 main）。
+- 首次上传 HEAD：119fe5555beedb7974f3c83f90f3efbcb98e0b57，与远端一致；22 个提交、199 个跟踪文件。
+- 标签：v1.1 → 11b65fa0e66334ed0dba352add0f67e05e414a35（生成正式安装包的源码提交）。
+- 仓库专用 Ed25519 上传密钥、from 官方 metadata 的 known_hosts 和项目 SSH 配置都放在
+  `private\github\`，由 `.gitignore` 排除；已登记为只属于该仓库的 Deploy Key 并开启写入权限。
+- 全历史秘密扫描 0 处真实命中；远端递归文件树 199 个文件、可疑扩展名 0 个。

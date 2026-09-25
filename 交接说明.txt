@@ -665,3 +665,75 @@ Git 分支：main
 3. 两个旧项目继续只读；`artifacts` 继续为预期未跟踪目录，不得使用 `git add -A`。
 4. 原离线优先计划的“明确结束恢复状态”和“只重试 TXT”本轮未开展。
 5. 用户要求把源码备份到 GitHub 仓库；该工作在本区块之后执行，结果单独记录。
+
+
+飞船下载转换工具源码备份到 GitHub 交接说明
+
+更新时间：2026-09-26（北京时间）
+开发目录：D:\FeichuanDownloadConverterDev
+Git 分支：main
+
+一、仓库信息
+
+1. 完整网址：https://github.com/y521wan-coder/feichuan-download-converter
+2. 可见性：公开（任何人都可以阅读源码、交接说明和开发记录）
+3. 远端名：origin；远端地址：git@github.com:y521wan-coder/feichuan-download-converter.git
+4. 默认分支：main
+5. 首次上传时本地 HEAD 与远端 main 完全一致：
+   119fe5555beedb7974f3c83f90f3efbcb98e0b57
+6. 上传提交数 22；被跟踪文件数 199，与远端递归文件树一致（接口返回 truncated=false）
+
+二、正式版本标签
+
+1. 标签：v1.1（注释标签）。
+2. 标签对象 b5f7fd28b68fbbc82b10a3d4d198dbf42df7292d，解引用后指向
+   11b65fa0e66334ed0dba352add0f67e05e414a35。
+3. 该提交即生成正式安装包 `release\飞船下载转换工具-Setup-1.1.exe` 的源码提交；
+   其后的交接文档提交没有被误标为正式构建源码。
+
+三、凭据与敏感内容检查
+
+1. 工具与范围：自建 Python 扫描脚本，覆盖全部 22 个提交的完整 diff，检查腾讯云 AKID、
+   私钥块、GitHub/通用令牌、SecretId/SecretKey 赋值、签名直连、COS 令牌、授权头和
+   `.env` 形态内容。
+2. 结果：仅 1 处命中，人工核实为误报——`SecretId = credentials.SecretId` 从内存对象取值，
+   不含明文凭据。
+3. 历史中没有安装包、构建产物、日志、数据库、媒体或用户数据；唯一二进制是经 `.gitignore`
+   白名单明确跟踪的产品音效 `src\AccessibleVideoToText.App\任务结束.wav`。
+4. 远端独立复核：通过 GitHub 公共接口递归读取默认分支文件树，得到 199 个文件，
+   可疑扩展名 0 个；`private` 下的上传密钥、`ssh_config` 与 `worker\tools\*.exe` 均不在远端。
+
+四、Git 排除范围
+
+1. `private/*`（只跟踪不含秘密的 `private/README.md` 说明文件）。
+2. `worker/tools/*.exe`（yt-dlp、FFmpeg、ffprobe 二进制；版本与 SHA-256 记录在
+   `docs\baseline\import-manifest.md`）。
+3. `release/*`、`artifacts/candidate`、`artifacts/acceptance`、`worker/dist`、`bin`、`obj`、
+   `tools/dotnet`、`tools/.nuget`。
+4. `*.log`、`settings.json`、`credentials.dat`、`jobs.json`、`usage-ledger.json`、
+   `core_update_state.json`、媒体扩展名、`.env`、`*.pfx`、`*.snk`。
+
+五、上传密钥与 SSH 配置
+
+1. 仓库专用 Ed25519 上传密钥，本仓库独有，未复用其他项目的密钥：
+   `D:\FeichuanDownloadConverterDev\private\github\feichuan_download_converter_github_ed25519`
+   公钥为同目录 `.pub`；指纹 SHA256:XTIfQz4+faOYgkrj+23u34AJF83xs+/oS6X5uXkaCSY。
+2. 该公钥已在仓库设置中登记为 Deploy Key 并开启写入权限；私钥内容不进入任何文档、
+   日志或远端。
+3. GitHub 主机密钥文件：`D:\FeichuanDownloadConverterDev\private\github\known_hosts`，
+   取自官方 HTTPS metadata（https://api.github.com/meta），未盲目接受未知主机指纹。
+4. 项目 SSH 配置：`D:\FeichuanDownloadConverterDev\private\github\ssh_config`，通过
+   `git config --local core.sshCommand` 绑定，未修改用户全局 `~/.ssh/config`。
+5. 经验记录：`core.sshCommand` 中的路径必须使用正斜杠；使用反斜杠时 Git 的 shell 会
+   吞掉反斜杠，导致 “Can't open user config file” 而无法连接。
+
+六、清理
+
+1. 本次使用的扫描脚本、页面状态快照等中转文件均位于 `%TEMP%`，任务结束前已清理。
+2. 没有删除任何正式源码、Git 历史、正式归档、恢复备份或仓库上传密钥。
+
+七、以后如何更新
+
+1. 在本目录正常提交后运行 `git push origin main`；产生新版本标签时另行推送该标签。
+2. 项目目录整体移动后，`private\github\ssh_config` 中的绝对路径需要同步更新。
+3. 仓库当前为公开仓库；如需改为私有，在 GitHub 仓库设置中切换可见性即可，本地无需改动。
