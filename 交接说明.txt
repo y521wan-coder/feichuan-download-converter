@@ -592,3 +592,76 @@ Git 分支：main
 2. 不要回退自动转文字、不重复更新已安装内核、不覆盖用户音效、不改版本或擅自发布服务器更新。
 3. 本机恢复记录管理、只重试 TXT 等其他待办本轮未开展。所有历史 artifacts、D 盘用户课程/媒体和旧项目继续保留。
 4. 用户数据目录、真实腾讯云凭据、抖音/微信数据没有读取、迁移或清理；没有连接服务器、SSH 或数据库。
+
+
+飞船下载转换工具 1.1 下载核心更新、版本升级与本地安装包交接说明
+
+更新时间：2026-09-26（北京时间）
+开发目录：D:\FeichuanDownloadConverterDev
+Git 分支：main
+产品显示版本：1.1；程序集/文件版本：1.1.0.0；固定 AppId 不变
+
+一、本轮用户范围与结论
+
+1. 用户报告 YouTube 单视频 `https://youtu.be/HBtRW-aXB8o` 下载失败，要求查明原因；
+   随后明确授权：更新下载核心、升级版本号、在 D 盘生成最新安装包、覆盖替换本机安装版。
+2. 失败根因是内置下载核心 yt-dlp 2026.07.04 已过期，不是单个视频、不是保存位置、也不是
+   用户操作问题：换一个完全不相干的 YouTube 视频同样返回 403，而代理、YouTube 首页和
+   格式列表全部正常。
+3. 替换为官方稳定版 2026.08.19 后，同一个视频、同一套软件参数立即下载成功，问题闭环。
+4. 版本升级到 1.1（程序集/文件版本 1.1.0.0），JSON Lines 协议版本仍为 1，AppId 未变。
+
+二、根因与修复
+
+1. 旧核心 2026.07.04 取得的 YouTube 媒体地址一律返回 `HTTP Error 403: Forbidden`；
+   旧核心同时还缺少 YouTube 现在要求的 JavaScript 运行时支持（日志中的
+   “No supported JavaScript runtime could be found” 警告）。
+2. `worker/tools/yt-dlp.exe` 与 `worker/tools/SHA2-256SUMS` 已替换为官方 stable 2026.08.19：
+   17840399 字节，SHA-256 `66674953FE251B89F4D08C5F0E35E0728679BD67AB3D7D05C0562AF101DD3E7A`，
+   与官方 SHA2-256SUMS 清单一致。
+3. 附带缺陷修复：`core_updater.py` 原先强制 `proxies={"http": None, "https": None}`，而
+   requests 不读取 Windows 系统代理，导致本机“检查下载核心更新”永远无法下载 GitHub 资源，
+   这正是核心长期停留在 2026.07.04 的原因。现在按“系统代理优先、直连兜底”顺序请求，
+   两条路径都失败才报错，并新增离线 smoke 覆盖。
+4. 安装版与仓库核心均已更新；安装版旧核心备份为 `tools\yt-dlp.exe.previous`，仓库旧核心备份在
+   `artifacts\core-update-20260926\`。
+
+三、测试与真实验收
+
+1. .NET Release：72/72 通过，0 失败、0 跳过。
+2. Python 离线 smoke：20/20 通过，含新增的代理优先与回退覆盖。
+3. 覆盖安装：安装器返回码 0；安装目录 489 项与候选逐文件 SHA-256 核对为 0 缺失，
+   唯一差异是安装器按设计保留用户自定义的 `任务结束.wav`。
+4. 真实安装版验收：用安装目录的 `feichuan-worker.exe`（握手 `worker_version=1.1`）真实下载
+   同一 YouTube 视频，返回 `kind=download`、`partial_success=false`、`warnings=[]`、
+   `.part=0`、stderr 0 行、worker 退出码 0；媒体为 WebM（AV1 1920×1080 + Opus），
+   251.441 秒、38589330 字节。验收期间临时切换的下载目录已恢复为 `D:\`。
+5. 用户 D 盘根目录的 `人间逍遥仙.mp4`（H.264 1920×1080 + AAC，251.47 秒，68880798 字节）
+   为本次修复后的真实下载结果，属于用户需要的正式文件，不得删除。
+
+四、构建、安装与审计
+
+1. 构建脚本：`scripts/build_candidate.ps1`；候选静态载荷 489 个，`版本与校验.txt` 为 1.1 / 1.1.0.0。
+2. 项目安装包：`release\飞船下载转换工具-Setup-1.1.exe`，164120295 字节，SHA-256
+   `A98E6983B87482A7D48E415C2C11419D9F4AA229F8BAD1C2A6EEFB21EF8433C4`；
+   审计 `.sha256` 只在项目 `release`。
+3. D 盘交付：`D:\飞船下载转换工具-Setup-1.1.exe`，哈希与项目 release 完全一致，D 盘不放 `.sha256`。
+4. 覆盖前备份：`artifacts\installer-upgrade-20260926-v1.1\backup-installed`（493 个文件）。
+5. 当前安装目录：`C:\Users\apple007\AppData\Local\Programs\飞船下载工具`；卸载项只有
+   “飞船下载转换工具 1.1”，安装位置正确；桌面快捷方式指向安装目录主程序。
+6. 关键安装文件：
+   - 飞船下载转换工具.exe：162816 字节，`C82FD27182E53C633932FEF09679CDB34D39E1821E988623DE94FBAC230A3434`
+   - 飞船下载转换工具.dll：156160 字节，`9331940F820452406F12675C2341A89171C2CFC9BA77AC26C7E7C6D4909F80F6`
+   - AccessibleVideoToText.Core.dll：86528 字节，`F9212C3AFD4B39562DF5BF92D37EDD559007411BDF3D707474230D230A019687`
+   - feichuan-worker.exe：18808731 字节，`BAB6DCDB7873DEA192B13260F4491DF3266B4974293AE41D215834B7F3C737BC`
+   - 使用说明.txt：11261 字节，`950905B68B914E36D09C2C9DDAA6CCE7546F373CE724EBBF8E1354488CD768AB`
+   - tools\yt-dlp.exe：17840399 字节，`66674953FE251B89F4D08C5F0E35E0728679BD67AB3D7D05C0562AF101DD3E7A`
+7. 安装包 Authenticode 仍为 NotSigned，Windows 可能提示“未知发布者”。
+
+五、边界与后续
+
+1. 没有生成、上传或发布服务器更新包；服务器更新发布继续暂停。
+2. 没有读取、配置、解密或输出腾讯云凭据；没有连接服务器、SSH、数据库或域名。
+3. 两个旧项目继续只读；`artifacts` 继续为预期未跟踪目录，不得使用 `git add -A`。
+4. 原离线优先计划的“明确结束恢复状态”和“只重试 TXT”本轮未开展。
+5. 用户要求把源码备份到 GitHub 仓库；该工作在本区块之后执行，结果单独记录。
