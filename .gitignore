@@ -62,6 +62,10 @@ usage-ledger.json
 core_update_state.json
 
 # Secrets and local overrides
+# Repository-local private material: deployment keys, local secrets and
+# machine-specific SSH configuration. Only the safety note is tracked.
+private/*
+!private/README.md
 .env
 .env.*
 secrets.*
