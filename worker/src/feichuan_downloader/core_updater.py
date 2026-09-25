@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import urllib.request
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -39,6 +40,31 @@ class CoreUpdateResult:
     latest_version: str = ""
     available: bool = False
     message: str = ""
+
+
+def system_proxy_candidates() -> list[dict[str, str | None]]:
+    """按优先级返回 requests 代理设置：系统代理优先，直连兜底。
+
+    requests 默认只读取环境变量代理。在配置了本地代理（例如 127.0.0.1:10808）的
+    Windows 电脑上，GitHub 域名只有走该代理才可达，直接直连会连接失败，下载核心
+    更新就会永远不可用。``urllib.request.getproxies()`` 在 Windows 上会读取当前
+    用户的系统代理设置，因此把它作为首选路径，并保留直连作为兜底。
+    """
+
+    candidates: list[dict[str, str | None]] = []
+    try:
+        system = urllib.request.getproxies()
+    except Exception:
+        system = {}
+    cleaned = {
+        str(name).lower(): str(value)
+        for name, value in system.items()
+        if str(name).lower() in {"http", "https"} and value
+    }
+    if cleaned:
+        candidates.append(cleaned)
+    candidates.append({"http": None, "https": None})
+    return candidates
 
 
 class CoreUpdater:
@@ -168,16 +194,14 @@ class CoreUpdater:
 
     def _fetch_release(self) -> dict[str, Any]:
         self._emit("正在查询 yt-dlp 官方 stable release……")
-        response = requests.get(
+        response = self._get(
             GITHUB_RELEASE_API,
             headers={
                 "Accept": "application/vnd.github+json",
                 "User-Agent": f"FeichuanDownloadTool/{VERSION}",
             },
             timeout=(10, 30),
-            proxies={"http": None, "https": None},
         )
-        response.raise_for_status()
         release = response.json()
         if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
             raise RuntimeError("没有可用的 stable release。")
@@ -260,27 +284,35 @@ class CoreUpdater:
         if parts.scheme != "https" or parts.hostname not in {"github.com", "objects.githubusercontent.com"}:
             raise RuntimeError("官方更新地址不是受信任的 GitHub HTTPS 地址。")
 
-    @staticmethod
-    def _download_text(url: str) -> str:
-        response = requests.get(
+    def _get(self, url: str, **kwargs: Any) -> requests.Response:
+        """按“系统代理 → 直连”的顺序请求，两条路径都失败才报错。"""
+
+        first_error: Exception | None = None
+        for proxies in system_proxy_candidates():
+            try:
+                response = requests.get(url, proxies=proxies, **kwargs)
+                response.raise_for_status()
+                return response
+            except requests.RequestException as exc:
+                if first_error is None:
+                    first_error = exc
+        raise first_error or RuntimeError("下载核心更新网络请求失败。")
+
+    def _download_text(self, url: str) -> str:
+        response = self._get(
             url,
             headers={"User-Agent": f"FeichuanDownloadTool/{VERSION}"},
             timeout=(10, 30),
-            proxies={"http": None, "https": None},
         )
-        response.raise_for_status()
         return response.content.decode("utf-8", errors="replace")
 
-    @staticmethod
-    def _download_file(url: str, destination: Path) -> None:
-        with requests.get(
+    def _download_file(self, url: str, destination: Path) -> None:
+        with self._get(
             url,
             headers={"User-Agent": f"FeichuanDownloadTool/{VERSION}"},
             stream=True,
             timeout=(10, 120),
-            proxies={"http": None, "https": None},
         ) as response:
-            response.raise_for_status()
             with destination.open("wb") as output:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if chunk:

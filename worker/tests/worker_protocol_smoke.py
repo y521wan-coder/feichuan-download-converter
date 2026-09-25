@@ -95,7 +95,7 @@ def check_subprocess_round_trip() -> None:
         assert hello["protocol"] == PROTOCOL_NAME
         assert hello["version"] == PROTOCOL_VERSION
         assert hello["type"] == "hello.result"
-        assert hello["payload"]["worker_version"] == "1.0"
+        assert hello["payload"]["worker_version"] == "1.1"
         assert "douyin.note.images" in hello["payload"]["capabilities"]
         assert "xiaoe.capture.download" in hello["payload"]["capabilities"]
 

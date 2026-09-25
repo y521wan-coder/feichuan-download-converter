@@ -14,7 +14,7 @@ $Dotnet = Join-Path $ProjectRoot "tools\dotnet\dotnet.exe"
 $AppProject = Join-Path $ProjectRoot "src\AccessibleVideoToText.App\AccessibleVideoToText.App.csproj"
 $WorkerExe = Join-Path $WorkerRoot "dist\feichuan-worker.exe"
 $InstallerScript = Join-Path $ProjectRoot "installer\FeichuanDownloadConverter.iss"
-$Installer = Join-Path $Release "飞船下载转换工具-Setup-1.0.exe"
+$Installer = Join-Path $Release "飞船下载转换工具-Setup-1.1.exe"
 
 function Assert-ChildPath([string]$Path, [string]$Parent) {
     $parentFull = [IO.Path]::GetFullPath($Parent).TrimEnd('\') + '\'
@@ -98,8 +98,8 @@ if ($ffmpegInfo -match '(?i)--enable-(?:gpl|nonfree)(?:\s|$)') {
 
 $manifestLines = [Collections.Generic.List[string]]::new()
 $manifestLines.Add("飞船下载转换工具")
-$manifestLines.Add("显示版本：1.0")
-$manifestLines.Add("程序集版本：1.0.0.0")
+$manifestLines.Add("显示版本：1.1")
+$manifestLines.Add("程序集版本：1.1.0.0")
 $manifestLines.Add("构建类型：本地测试候选，未发布到服务器，未做 Authenticode 签名")
 $manifestLines.Add("")
 foreach ($file in Get-ChildItem -LiteralPath $Stage -Recurse -File | Sort-Object FullName) {

@@ -27,7 +27,7 @@ def main() -> None:
     settings_root = tempfile.TemporaryDirectory(prefix="feichuan-gui-settings-")
     settings_path = Path(settings_root.name) / "settings.json"
     settings_path.write_text(
-        json.dumps({"usage_guide_seen_versions": ["1.0"]}, ensure_ascii=False),
+        json.dumps({"usage_guide_seen_versions": ["1.1"]}, ensure_ascii=False),
         encoding="utf-8",
     )
     existing_window_pids = {

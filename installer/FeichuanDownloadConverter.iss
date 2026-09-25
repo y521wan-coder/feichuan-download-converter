@@ -10,7 +10,7 @@
 #endif
 
 #define MyAppName "飞船下载转换工具"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.1"
 #define MyAppExeName "飞船下载转换工具.exe"
 #define OldAppName "飞船下载工具"
 #define OldAppExeName "飞船下载工具.exe"
@@ -47,8 +47,8 @@ CloseApplications=yes
 CloseApplicationsFilter={#MyAppExeName},{#OldAppExeName},feichuan-worker.exe,yt-dlp.exe,ffmpeg.exe,ffprobe.exe
 RestartApplications=no
 SetupLogging=yes
-VersionInfoVersion=1.0.0.0
-VersionInfoProductVersion=1.0
+VersionInfoVersion=1.1.0.0
+VersionInfoProductVersion=1.1
 VersionInfoProductName={#MyAppName}
 VersionInfoDescription={#MyAppName} Setup
 

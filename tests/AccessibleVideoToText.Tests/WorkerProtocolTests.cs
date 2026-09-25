@@ -72,7 +72,7 @@ public sealed class WorkerProtocolTests
 
         var hello = await client.StartAsync().WaitAsync(TimeSpan.FromSeconds(15));
         Assert.AreEqual("hello.result", hello.Type);
-        Assert.AreEqual("1.0", hello.Payload.GetProperty("worker_version").GetString());
+        Assert.AreEqual("1.1", hello.Payload.GetProperty("worker_version").GetString());
         Assert.IsTrue(hello.Payload.GetProperty("capabilities")
             .EnumerateArray()
             .Any(value => value.GetString() == "douyin.note.images"));

@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 APP_NAME = "飞船下载转换工具"
-VERSION = "1.0"
+VERSION = "1.1"
 PRODUCT_KEY = "feichuan_download_tool"
 UPDATE_PLATFORM = "windows"
 UPDATE_CHANNEL = "stable"

@@ -21,8 +21,9 @@ def main() -> None:
         target = temp_root / "yt-dlp.exe"
         backup = temp_root / "yt-dlp.exe.previous"
         shutil.copy2(source, target)
+        expected_version = module.CoreUpdater._executable_version(source)
         release = {
-            "tag_name": "2026.07.04",
+            "tag_name": expected_version,
             "assets": [
                 {"name": "yt-dlp.exe", "browser_download_url": "https://github.com/a"},
                 {"name": "SHA2-256SUMS", "browser_download_url": "https://github.com/b"},
@@ -40,9 +41,9 @@ def main() -> None:
         ), patch.object(
             module.CoreUpdater, "_download_text", staticmethod(lambda _url: f"{checksum}  yt-dlp.exe\n")
         ), patch.object(module.CoreUpdater, "_download_file", staticmethod(copy_new)):
-            module.CoreUpdater()._install_release(release, "2026.07.04")
+            module.CoreUpdater()._install_release(release, expected_version)
         assert target.exists() and backup.exists()
-        assert module.CoreUpdater()._executable_version(target) == "2026.07.04"
+        assert module.CoreUpdater()._executable_version(target) == expected_version
     print("core transaction smoke passed")
 
 

@@ -16,7 +16,7 @@ from typing import Any, Mapping
 
 PROTOCOL_NAME = "feichuan-worker"
 PROTOCOL_VERSION = 1
-WORKER_VERSION = "1.0"
+WORKER_VERSION = "1.1"
 MAX_MESSAGE_BYTES = 1024 * 1024
 
 _FORBIDDEN_KEYS = frozenset(

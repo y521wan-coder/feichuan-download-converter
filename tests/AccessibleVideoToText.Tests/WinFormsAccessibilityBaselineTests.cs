@@ -341,13 +341,13 @@ public sealed class WinFormsAccessibilityBaselineTests
     }
 
     [TestMethod]
-    public void ProductAssemblyVersions_AreFixedAtOnePointZero()
+    public void ProductAssemblyVersions_AreFixedAtOnePointOne()
     {
         var assembly = typeof(MainForm).Assembly;
-        Assert.AreEqual(new Version(1, 0, 0, 0), assembly.GetName().Version);
+        Assert.AreEqual(new Version(1, 1, 0, 0), assembly.GetName().Version);
         var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
         Assert.IsNotNull(informational);
-        Assert.AreEqual("1.0", informational.InformationalVersion);
+        Assert.AreEqual("1.1", informational.InformationalVersion);
     }
 
     [TestMethod]

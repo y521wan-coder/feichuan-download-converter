@@ -34,7 +34,7 @@ from feichuan_downloader.software_updater import check_software_update
 
 
 def main() -> None:
-    assert VERSION == __version__ == "1.0"
+    assert VERSION == __version__ == "1.1"
     assert sanitize_filename('a<>:"/b*') == "a_____b_"
     assert safe_url_for_log("https://example.test/media.mp4?token=secret") == (
         "https://example.test/media.mp4"
@@ -332,6 +332,68 @@ def main() -> None:
         assert "有效" in str(exc)
     else:
         raise AssertionError("invalid URL did not fail safely")
+    # 下载核心更新必须在系统代理和直连之间自动回退；以下全部使用假实现，不联网。
+    from feichuan_downloader import core_updater as core_updater_module
+
+    system_proxy = {
+        "http": "http://127.0.0.1:10808",
+        "https": "http://127.0.0.1:10808",
+    }
+    saved_getproxies = core_updater_module.urllib.request.getproxies
+    saved_get = core_updater_module.requests.get
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+    def use_proxy_environment(values: dict[str, str]) -> None:
+        core_updater_module.urllib.request.getproxies = lambda: dict(values)
+
+    def use_requests_get(handler) -> None:
+        core_updater_module.requests.get = handler
+
+    try:
+        use_proxy_environment(system_proxy)
+        assert core_updater_module.system_proxy_candidates() == [
+            system_proxy,
+            {"http": None, "https": None},
+        ], core_updater_module.system_proxy_candidates()
+        use_proxy_environment({})
+        assert core_updater_module.system_proxy_candidates() == [
+            {"http": None, "https": None}
+        ], core_updater_module.system_proxy_candidates()
+
+        use_proxy_environment(system_proxy)
+        seen: list[dict[str, str]] = []
+
+        def proxy_then_direct(url: str, proxies=None, **kwargs: object) -> _FakeResponse:
+            seen.append(dict(proxies or {}))
+            if len(seen) == 1:
+                raise core_updater_module.requests.ConnectionError("代理不可用")
+            return _FakeResponse()
+
+        use_requests_get(proxy_then_direct)
+        CoreUpdater()._get("https://example.invalid/release.json")
+        assert seen == [system_proxy, {"http": None, "https": None}], seen
+
+        tried: list[dict[str, str]] = []
+
+        def always_failing(url: str, proxies=None, **kwargs: object) -> _FakeResponse:
+            tried.append(dict(proxies or {}))
+            raise core_updater_module.requests.ConnectionError("全部失败")
+
+        use_requests_get(always_failing)
+        try:
+            CoreUpdater()._get("https://example.invalid/release.json")
+        except core_updater_module.requests.RequestException as exc:
+            assert "全部失败" in str(exc), exc
+        else:
+            raise AssertionError("两条网络路径都失败时没有报错")
+        assert tried == [system_proxy, {"http": None, "https": None}], tried
+    finally:
+        core_updater_module.urllib.request.getproxies = saved_getproxies
+        core_updater_module.requests.get = saved_get
+
     print("smoke checks passed")
 
 
